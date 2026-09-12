@@ -1,0 +1,968 @@
+local Players=game:GetService("Players")
+local LocalPlayer=Players.LocalPlayer
+local Char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local ItemRemote=ReplicatedStorage.Remotes.Item
+local BusJumping=ReplicatedStorage.Remotes.BusJumping
+local UIS=game:GetService("UserInputService")
+local Camera=workspace.CurrentCamera
+local CollectionService=game:GetService("CollectionService")
+
+local RayParams=RaycastParams.new()
+RayParams.FilterDescendantsInstances={Char}
+RayParams.FilterType=Enum.RaycastFilterType.Exclude
+
+for _,player in ipairs(Players:GetPlayers()) do
+	local c=player.Character or player.CharacterAdded:Wait()
+	if c:FindFirstChild("HumanoidRootPart") then
+		CollectionService:AddTag(c,"PumpkinPlayer")
+	end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+	plr.CharacterAdded:Connect(function(c)
+		CollectionService:AddTag(c,"PumpkinPlayer")
+	end)
+end)
+
+local function ClearLine(a,b)
+	local r=workspace:Raycast(a,b-a,RayParams)
+	return not r
+end
+
+local function ClearFromTool(toolPos,targetPos)
+	local r=workspace:Raycast(toolPos,targetPos-toolPos,RayParams)
+	return not r
+end
+
+local function AvoidTools(pos)
+	local newPos=pos
+	for _,obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("Tool") then
+			local handle=obj:FindFirstChild("Handle")
+			if handle then
+				local flatPos=Vector3.new(newPos.X,handle.Position.Y,newPos.Z)
+				if (flatPos-handle.Position).Magnitude<3 then
+					newPos=newPos+Camera.CFrame.RightVector*6
+				end
+			end
+		end
+	end
+	return newPos
+end
+
+local function Ground(pos)
+	local r=workspace:Raycast(pos+Vector3.new(0,40,0),Vector3.new(0,-200,0),RayParams)
+	if r then
+		local p=r.Position+Vector3.new(0,3,0)
+		return AvoidTools(p)
+	else
+		return AvoidTools(pos+Vector3.new(0,3,0))
+	end
+end
+
+local AutoUseList={
+	["Speed Potion"]=true,
+	["Potion of Strength"]=true,
+	["Bull's essence"]=true,
+	["Frog Potion"]=true,
+	["Speed Brew"]=true,
+	["Frog Brew"]=true,
+	["Strength Brew"]=true,
+	["Boba"]=true
+}
+
+local function PickupTool(tool)
+	local id=tool:GetAttribute("ItemId")
+	if id then
+		ItemRemote:FireServer(id)
+		local gui=tool:FindFirstChild("ItemGui")
+		if gui then gui.Enabled=false end
+	end
+end
+
+local function EnsureNotOnTool(target,toolPos)
+	local flatTarget=Vector3.new(target.X,toolPos.Y,target.Z)
+	if (flatTarget-toolPos).Magnitude<2 then
+		local alt=Ground(toolPos+Camera.CFrame.RightVector*5)
+		if math.abs(alt.Y-toolPos.Y)<=6 and ClearFromTool(toolPos,alt) then
+			return alt
+		end
+		local alt2=Ground(toolPos-Camera.CFrame.RightVector*5)
+		if math.abs(alt2.Y-toolPos.Y)<=6 and ClearFromTool(toolPos,alt2) then
+			return alt2
+		end
+	end
+	return target
+end
+
+local function BestSide(toolPos)
+	local hrp=Char:FindFirstChild("HumanoidRootPart")
+	local baseY=toolPos.Y
+	if not hrp then
+		local g=Vector3.new(toolPos.X,baseY+3,toolPos.Z)
+		return EnsureNotOnTool(AvoidTools(g),toolPos)
+	end
+	local sides={
+		Vector3.new(toolPos.X,baseY,toolPos.Z)+Camera.CFrame.RightVector*5,
+		Vector3.new(toolPos.X,baseY,toolPos.Z)-Camera.CFrame.RightVector*5,
+		Vector3.new(toolPos.X,baseY,toolPos.Z)+Camera.CFrame.LookVector*5,
+		Vector3.new(toolPos.X,baseY,toolPos.Z)-Camera.CFrame.LookVector*5
+	}
+	local best=nil
+	local bestDist=math.huge
+	for _,pos in ipairs(sides) do
+		local g=AvoidTools(pos)
+		if math.abs(g.Y-baseY)<=2 then
+			if ClearFromTool(toolPos,g) then
+				local d=(g-hrp.Position).Magnitude
+				if d<bestDist then
+					bestDist=d
+					best=g
+				end
+			end
+		end
+	end
+	if best then
+		return EnsureNotOnTool(best,toolPos)
+	end
+	local fallback=Vector3.new(toolPos.X,baseY,toolPos.Z)
+	return EnsureNotOnTool(AvoidTools(fallback),toolPos)
+end
+
+local function SafeTP(tool)
+	local hrp=Char:FindFirstChild("HumanoidRootPart")
+	local handle=tool:FindFirstChild("Handle")
+	if not hrp or not handle then return end
+	local target=BestSide(handle.Position)
+	target=AvoidTools(target)
+	hrp.CFrame=CFrame.new(target,hrp.Position+hrp.CFrame.LookVector)
+end
+
+local function TPAndPickup(tool)
+	SafeTP(tool)
+	task.wait(0.1)
+	PickupTool(tool)
+	task.wait(0.5)
+end
+
+local function InstantLand()
+	local hrp=Char:FindFirstChild("HumanoidRootPart")
+	local crystal=workspace:FindFirstChild("CrystalBlue",true)
+	if not hrp or not crystal then return end
+	local target=Ground(crystal.Position)
+	hrp.CFrame=CFrame.new(target,hrp.Position+hrp.CFrame.LookVector)
+end
+
+local function OnlyTouchingSelf()
+	local hrp=Char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+	local touching=hrp:GetTouchingParts()
+	for _,part in ipairs(touching) do
+		if not part:IsDescendantOf(Char) then
+			return false
+		end
+	end
+	return true
+end
+
+local jumped=false
+
+task.spawn(function()
+	while true do
+		if ILEnabled then
+			local hrp=Char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local touching=hrp:GetTouchingParts()
+				if #touching==0 and not jumped then
+					jumped=true
+				end
+				if jumped and OnlyTouchingSelf() then
+					InstantLand()
+					jumped=false
+				end
+			end
+		end
+		task.wait(0.05)
+	end
+end)
+
+local EBJEnabled=false
+local ILEnabled=false
+local RemoveZoneEnabled=false
+local DeleteSeatsEnabled=false
+local AutoUseEnabled=false
+local GetItemsEnabled=false
+local AutoPickupEnabled=false
+local BombPicked=false
+local PlayerESPEnabled=false
+local ItemESPEnabled=false
+local globalHRPSize=1
+local hrpGlobalSliderUsed=false
+
+local function ApplyHighlight(adorn)
+	if adorn and adorn.Parent and not adorn.Parent:FindFirstChild("PumpkinHighlight") then
+		local h=Instance.new("Highlight")
+		h.Name="PumpkinHighlight"
+		h.Adornee=adorn
+		h.FillColor=Color3.fromRGB(255,255,0)
+		h.OutlineColor=Color3.fromRGB(0,0,0)
+		h.FillTransparency=0.7
+		h.OutlineTransparency=0
+		h.Parent=adorn.Parent
+	end
+end
+
+local function CreateNameTag(char)
+	if char and not char:FindFirstChild("PumpkinNameTag") then
+		local hrp=char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			local billboard=Instance.new("BillboardGui")
+			billboard.Name="PumpkinNameTag"
+			billboard.Size=UDim2.new(0,150,0,40)
+			billboard.Adornee=hrp
+			billboard.AlwaysOnTop=true
+			billboard.Parent=char
+			local label=Instance.new("TextLabel")
+			label.Size=UDim2.new(1,0,1,0)
+			label.BackgroundTransparency=1
+			label.TextScaled=true
+			label.Font=Enum.Font.GothamBold
+			label.TextColor3=Color3.fromRGB(0,200,255)
+			label.TextStrokeTransparency=0.3
+			label.TextStrokeColor3=Color3.new(0,0,0)
+			label.Text=char.Name
+			label.Parent=billboard
+		end
+	end
+end
+
+local function CreateToolTag(tool)
+	if tool and tool.Parent==workspace.Items and not tool:FindFirstChild("PumpkinItemTag") then
+		local handle=tool:FindFirstChild("Handle")
+		if handle then
+			local billboard=Instance.new("BillboardGui")
+			billboard.Name="PumpkinItemTag"
+			billboard.Size=UDim2.new(0,150,0,40)
+			billboard.Adornee=handle
+			billboard.AlwaysOnTop=true
+			billboard.Parent=tool
+			local label=Instance.new("TextLabel")
+			label.Size=UDim2.new(1,0,1,0)
+			label.BackgroundTransparency=1
+			label.TextScaled=true
+			label.Font=Enum.Font.GothamBold
+			label.TextColor3=Color3.fromRGB(255,200,0)
+			label.TextStrokeTransparency=0.3
+			label.TextStrokeColor3=Color3.new(0,0,0)
+			label.Text=tool.Name
+			label.Parent=billboard
+			ApplyHighlight(handle)
+		end
+	end
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+	if obj:IsA("Tool") and obj.Parent==workspace.Items then
+		CollectionService:AddTag(obj,"PumpkinItem")
+	end
+	if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+		CollectionService:AddTag(obj,"PumpkinPlayer")
+	end
+end)
+
+for _,tool in ipairs(workspace.Items:GetChildren()) do
+	if tool:IsA("Tool") then
+		CollectionService:AddTag(tool,"PumpkinItem")
+	end
+end
+
+CollectionService:GetInstanceAddedSignal("PumpkinItem"):Connect(function(tool)
+	if ItemESPEnabled then
+		CreateToolTag(tool)
+	end
+end)
+
+CollectionService:GetInstanceAddedSignal("PumpkinPlayer"):Connect(function(char)
+	if PlayerESPEnabled then
+		local hrp=char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			ApplyHighlight(hrp)
+			CreateNameTag(char)
+		end
+	end
+end)
+
+local Rayfield=loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window=Rayfield:CreateWindow({
+	Name="Pumpkin Hub",
+	LoadingTitle="Pumpkin Hub",
+	LoadingSubtitle="Rayfield Edition",
+	ConfigurationSaving={Enabled=false}
+})
+
+local CombatTab=Window:CreateTab("Combat",4483345998)
+local ItemsTab=Window:CreateTab("Items",4483345998)
+local ESPTab=Window:CreateTab("ESP",4483345998)
+local OtherTab=Window:CreateTab("Other",4483345998)
+
+CombatTab:CreateSlider({
+	Name="Hitbox Size (Others + NPCs)",
+	Range={1,20},
+	Increment=1,
+	CurrentValue=1,
+	Callback=function(v)
+		globalHRPSize=v
+		hrpGlobalSliderUsed=true
+	end
+})
+
+CombatTab:CreateToggle({
+	Name="Slap Aura",
+	CurrentValue=false,
+	Callback=function(v)
+		_G.SlapAura=v
+	end
+})
+
+CombatTab:CreateToggle({
+	Name="Auto Win",
+	CurrentValue=false,
+	Callback=function(v)
+		_G.AutoWin=v
+	end
+})
+
+local TweenService=game:GetService("TweenService")
+
+local function IsRagdolled(char)
+	local hum=char:FindFirstChild("Humanoid")
+	if not hum then return true end
+	if hum.Health<=0 then return true end
+	if hum.PlatformStand==true then return true end
+	return false
+end
+
+task.spawn(function()
+	while true do
+		if _G.AutoWin then
+			local hrp=Char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local closest=nil
+				local closestDist=math.huge
+				for _,plr in ipairs(Players:GetPlayers()) do
+					if plr~=LocalPlayer then
+						local c=plr.Character
+						local chrp=c and c:FindFirstChild("HumanoidRootPart")
+						if c and chrp and not IsRagdolled(c) then
+							local d=(hrp.Position-chrp.Position).Magnitude
+							if d<closestDist then
+								closestDist=d
+								closest=chrp
+							end
+						end
+					end
+				end
+				if closest then
+					local tween=TweenService:Create(hrp,TweenInfo.new(0.1,Enum.EasingStyle.Linear),{CFrame=closest.CFrame})
+					tween:Play()
+				end
+			end
+		end
+		task.wait(3)
+	end
+end)
+
+ItemsTab:CreateToggle({
+	Name="Use Items",
+	CurrentValue=false,
+	Callback=function(v)
+		AutoUseEnabled=v
+	end
+})
+
+ItemsTab:CreateToggle({
+	Name="Get Items",
+	CurrentValue=false,
+	Callback=function(v)
+		GetItemsEnabled=v
+	end
+})
+
+ItemsTab:CreateToggle({
+	Name="Auto Pickup",
+	CurrentValue=false,
+	Callback=function(v)
+		AutoPickupEnabled=v
+	end
+})
+
+local AutoBombBusEnabled=false
+
+ItemsTab:CreateToggle({
+	Name="Auto Bomb Bus",
+	CurrentValue=false,
+	Callback=function(v)
+		AutoBombBusEnabled=v
+	end
+})
+
+ESPTab:CreateToggle({
+	Name="Player ESP",
+	CurrentValue=false,
+	Callback=function(v)
+		PlayerESPEnabled=v
+		if v then
+			for _,char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
+				local hrp=char:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					ApplyHighlight(hrp)
+					CreateNameTag(char)
+				end
+			end
+		end
+	end
+})
+
+ESPTab:CreateToggle({
+	Name="Tool ESP",
+	CurrentValue=false,
+	Callback=function(v)
+		ItemESPEnabled=v
+		if v then
+			for _,tool in ipairs(CollectionService:GetTagged("PumpkinItem")) do
+				CreateToolTag(tool)
+			end
+		end
+	end
+})
+
+OtherTab:CreateToggle({
+	Name="Early Bus Jump",
+	CurrentValue=false,
+	Callback=function(v)
+		EBJEnabled=v
+	end
+})
+
+OtherTab:CreateToggle({
+	Name="Instant Landing",
+	CurrentValue=false,
+	Callback=function(v)
+		ILEnabled=v
+	end
+})
+
+OtherTab:CreateToggle({
+	Name="Remove Zone Effect",
+	CurrentValue=false,
+	Callback=function(v)
+		RemoveZoneEnabled=v
+	end
+})
+
+OtherTab:CreateToggle({
+	Name="Delete All Seats",
+	CurrentValue=false,
+	Callback=function(v)
+		DeleteSeatsEnabled=v
+	end
+})
+
+local SpeedBoostEnabled=false
+
+OtherTab:CreateToggle({
+	Name="Speed Boost",
+	CurrentValue=false,
+	Callback=function(v)
+		SpeedBoostEnabled=v
+	end
+})
+
+OtherTab:CreateButton({
+	Name="Lobby Hider",
+	Callback=function()
+		local hrp=Char:FindFirstChild("HumanoidRootPart")
+		local lobby=workspace:FindFirstChild("Lobby")
+		local ceiling=lobby and lobby:FindFirstChild("Ceiling")
+		if hrp and ceiling then
+			local base=ceiling.Position
+			local top=Ground(base+Vector3.new(0,50,0))
+			hrp.CFrame=CFrame.new(top,hrp.Position+hrp.CFrame.LookVector)
+		end
+	end
+})
+
+local SafetyTab = Window:CreateTab("Safety", 4483345998)
+
+SafetyTab:CreateToggle({
+	Name = "Anti Acid",
+	CurrentValue = false,
+	Callback = function(v)
+		_G.AntiAcid = v
+	end
+})
+
+SafetyTab:CreateToggle({
+	Name = "Anti Lava",
+	CurrentValue = false,
+	Callback = function(v)
+		_G.AntiLava = v
+	end
+})
+
+SafetyTab:CreateToggle({
+	Name = "Anti Knockback",
+	CurrentValue = false,
+	Callback = function(v)
+		_G.AntiKnockback = v
+	end
+})
+
+BusJumping.OnClientEvent:Connect(function()
+	if ILEnabled then
+		InstantLand()
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if EBJEnabled then
+			local head=Char:FindFirstChild("Head")
+			if head and head.Transparency==1 then
+				BusJumping:FireServer()
+			end
+		end
+		task.wait(0.05)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if RemoveZoneEnabled then
+			for _,obj in ipairs(game:GetDescendants()) do
+				if obj.Name=="ZoneEffects" then
+					obj:Destroy()
+				end
+			end
+		end
+		task.wait(1)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if DeleteSeatsEnabled then
+			for _,obj in ipairs(game:GetDescendants()) do
+				if obj:IsA("Seat") or obj:IsA("VehicleSeat") then
+					obj:Destroy()
+				end
+			end
+		end
+		task.wait(1)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if hrpGlobalSliderUsed then
+			for _,player in ipairs(Players:GetPlayers()) do
+				if player~=LocalPlayer then
+					local c=player.Character
+					local hrp=c and c:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						hrp.Size=Vector3.new(globalHRPSize,globalHRPSize,globalHRPSize)
+						hrp.Transparency=0.8
+						hrp.CanCollide=false
+					end
+				end
+			end
+			for _,npc in ipairs(workspace:GetDescendants()) do
+				if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc~=Char then
+					local hrp=npc:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						hrp.Size=Vector3.new(globalHRPSize,globalHRPSize,globalHRPSize)
+						hrp.Transparency=0.8
+						hrp.CanCollide=false
+					end
+				end
+			end
+		end
+		task.wait(0.3)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if AutoUseEnabled then
+			for _,tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+				if AutoUseList[tool.Name] then
+					tool.Parent=Char
+					task.wait(0.5)
+					pcall(function()tool:Activate()end)
+				end
+			end
+		end
+		task.wait(0.1)
+	end
+end)
+
+local Players=game:GetService("Players")
+local lp=Players.LocalPlayer
+local char=lp.Character or lp.CharacterAdded:Wait()
+local hrp=char:WaitForChild("HumanoidRootPart")
+
+local Items=workspace:WaitForChild("Items")
+local ItemRemote=game:GetService("ReplicatedStorage").Remotes.Item
+
+local head=char:WaitForChild("Head")
+local blocked=false
+
+head:GetPropertyChangedSignal("Transparency"):Connect(function()
+	if head.Transparency==1 then
+		blocked=true
+		task.delay(10.3,function()
+			blocked=false
+		end)
+	end
+end)
+
+local function pickup(handle)
+	if blocked then return end
+	local id=handle:GetAttribute("ItemId")
+	if not id then return end
+	ItemRemote:FireServer(id)
+	local gui=handle:FindFirstChild("ItemGui")
+	if gui then gui.Enabled=false end
+end
+
+task.spawn(function()
+	while true do
+		local closestHandle=nil
+		local closestDist=15
+		for _,tool in ipairs(Items:GetChildren()) do
+			if tool:IsA("Tool") then
+				local handle=tool:FindFirstChild("Handle")
+				if handle then
+					local d=(handle.Position-hrp.Position).Magnitude
+					if d<closestDist then
+						closestDist=d
+						closestHandle=handle
+					end
+				end
+			end
+		end
+		if closestHandle then
+			task.wait(0.2)
+			pickup(closestHandle)
+		end
+		task.wait(0.1)
+	end
+end)
+
+local lastPicked=nil
+
+local popup=Instance.new("TextLabel")
+popup.Size=UDim2.new(0,300,0,50)
+popup.Position=UDim2.new(0.5,-150,0.1,0)
+popup.BackgroundTransparency=0.3
+popup.BackgroundColor3=Color3.new(0,0,0)
+popup.TextColor3=Color3.new(1,1,1)
+popup.TextScaled=true
+popup.Visible=false
+popup.Parent=lp.PlayerGui
+
+local function ShowPopup(msg)
+	popup.Text=msg
+	popup.Visible=true
+	task.delay(1.2,function()
+		popup.Visible=false
+	end)
+end
+
+local function TPWaitLookPickup(tool)
+	local hrp=Char:FindFirstChild("HumanoidRootPart")
+	local handle=tool:FindFirstChild("Handle")
+	if not hrp or not handle then return end
+	if lastPicked==tool then return end
+	lastPicked=tool
+	local toolPos=handle.Position
+	local sideDirs={
+		Vector3.new(5,0,0),
+		Vector3.new(-5,0,0),
+		Vector3.new(0,0,5),
+		Vector3.new(0,0,-5)
+	}
+	local chosenSide=nil
+	for _,dir in ipairs(sideDirs) do
+		local ray=workspace:Raycast(toolPos,dir,RayParams)
+		if not ray then
+			chosenSide=dir
+			break
+		end
+	end
+	if chosenSide then
+		local sidePos=toolPos+chosenSide
+		hrp.CFrame=CFrame.new(sidePos,toolPos)
+	else
+		local fallbackSide=Camera.CFrame.RightVector*4
+		local sidePos=toolPos+fallbackSide
+		hrp.CFrame=CFrame.new(sidePos,toolPos)
+	end
+	local antiFall=Instance.new("Part")
+	antiFall.Size=Vector3.new(6,1,6)
+	antiFall.Anchored=true
+	antiFall.CanCollide=true
+	antiFall.Transparency=1
+	antiFall.Position=hrp.Position-Vector3.new(0,2,0)
+	antiFall.Parent=workspace
+	task.delay(1,function()
+		if antiFall then antiFall:Destroy() end
+	end)
+	task.wait(0.2)
+	hrp.CFrame=CFrame.new(hrp.Position,toolPos)
+	local id=handle:GetAttribute("ItemId")
+	if id then
+		ItemRemote:FireServer(id)
+		local gui=handle:FindFirstChild("ItemGui")
+		if gui then gui.Enabled=false end
+	end
+	task.wait(0.5)
+end
+
+task.spawn(function()
+	while true do
+		local timeLeftObj=
+			lp.PlayerGui:FindFirstChild("Countdown")
+			and lp.PlayerGui.Countdown:FindFirstChild("Countdown")
+			and lp.PlayerGui.Countdown.Countdown:FindFirstChild("TimeLeft")
+
+		local allowed=false
+
+		if timeLeftObj then
+			local t=timeLeftObj.Text
+			if t=="1" or t=="2" or t=="3" then
+				task.wait(0.1)
+				if timeLeftObj.Text==t then
+					allowed=true
+				end
+			end
+		end
+
+		if not allowed then
+			ShowPopup("Countdown too high — TP blocked")
+			task.wait(0.05)
+			continue
+		else
+			ShowPopup("Countdown is 3 or less — TP allowed")
+		end
+
+		if timeLeftObj and timeLeftObj.Text=="1" then
+			task.wait(1.2)
+			if ILEnabled then
+				InstantLand()
+			end
+		end
+
+		if GetItemsEnabled then
+			if head.Transparency==1 then
+				task.wait(0.5)
+				continue
+			end
+			local hrp=Char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local autoItems={}
+				local bombTool=nil
+				for _,obj in ipairs(workspace:GetDescendants()) do
+					if obj:IsA("Tool") then
+						local handle=obj:FindFirstChild("Handle")
+						if handle then
+							if obj.Name=="Bomb" and not BombPicked then
+								bombTool=obj
+							elseif AutoUseList[obj.Name] then
+								table.insert(autoItems,obj)
+							end
+						end
+					end
+				end
+				local firstTP=nil
+				local secondTP=nil
+				local thirdTP=nil
+				if not BombPicked and bombTool then
+					firstTP=bombTool
+					BombPicked=true
+				else
+					firstTP=autoItems[1]
+				end
+				for _,item in ipairs(autoItems) do
+					if item~=firstTP then
+						secondTP=item
+						break
+					end
+				end
+				for _,item in ipairs(autoItems) do
+					if item~=firstTP and item~=secondTP then
+						thirdTP=item
+						break
+					end
+				end
+				if firstTP then TPWaitLookPickup(firstTP) end
+				if secondTP then TPWaitLookPickup(secondTP) end
+				if thirdTP then TPWaitLookPickup(thirdTP) end
+				task.wait(8)
+			end
+		end
+
+		task.wait(0.5)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if _G.SlapAura then
+			local hrp=Char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				for _,player in ipairs(Players:GetPlayers()) do
+					if player~=lp then
+						local c=player.Character
+						local chrp=c and c:FindFirstChild("HumanoidRootPart")
+						if chrp then
+							local dist=(hrp.Position-chrp.Position).Magnitude
+							if dist<=20 then
+								pcall(function()
+									ReplicatedStorage.Remotes.Slap:FireServer(chrp)
+								end)
+							end
+						end
+					end
+				end
+			end
+		end
+		task.wait(0.5)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if SpeedBoostEnabled then
+			local hum=Char:FindFirstChild("Humanoid")
+			local hrp=Char:FindFirstChild("HumanoidRootPart")
+			if hum and hrp then
+				local dir=hum.MoveDirection
+				if dir.Magnitude>0 then
+					hrp.CFrame=hrp.CFrame+(dir*2)
+				end
+			end
+		end
+		task.wait(1)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if AutoBombBusEnabled then
+			local head=Char:FindFirstChild("Head")
+			if head and head.Transparency==1 then
+				task.wait(10.3)
+				local bomb=Char:FindFirstChild("Bomb") or lp.Backpack:FindFirstChild("Bomb")
+				if bomb then
+					bomb.Parent=Char
+					pcall(function()
+						bomb:Activate()
+					end)
+				end
+			end
+		end
+		task.wait(0.05)
+	end
+end)
+
+task.spawn(function()
+	while true do
+
+		if _G.AntiAcid then
+			local whitelist = {
+				["Colliders"] = true,
+				["Effects"] = true,
+				["IgnoreList"] = true,
+				["InteractableEvents"] = true,
+				["Items"] = true,
+				["Map"] = true,
+				["MapBounds"] = true,
+				["Rubbled Remains"] = true,
+				["Shipments"] = true,
+				["Lobby"] = true,
+				["SoundRegions"] = true
+			}
+
+			for _,obj in ipairs(workspace:GetChildren()) do
+				if obj:IsA("Folder") and not whitelist[obj.Name] then
+					for _,child in ipairs(obj:GetChildren()) do
+						child:Destroy()
+					end
+					obj:Destroy()
+				end
+			end
+		end
+
+		if _G.AntiLava then
+			for _,obj in ipairs(workspace:GetDescendants()) do
+				if obj:IsA("BasePart") and obj.Name == "Lava" then
+					obj:Destroy()
+				end
+			end
+		end
+
+		if _G.AntiKnockback then
+			local char = Players.LocalPlayer.Character
+			local hum = char and char:FindFirstChild("Humanoid")
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+			if hum and hrp then
+				if hum.PlatformStand == true then
+					if not workspace:FindFirstChild("AntiKB_Cage_"..char.Name) then
+						local cage = Instance.new("Folder")
+						cage.Name = "AntiKB_Cage_"..char.Name
+						cage.Parent = workspace
+
+						local function makePart(name, size, offset)
+							local p = Instance.new("Part")
+							p.Name = name
+							p.Size = size
+							p.Anchored = true
+							p.CanCollide = true
+							p.Transparency = 1
+							p.Position = hrp.Position + offset
+							p.Parent = cage
+						end
+
+						makePart("Top", Vector3.new(6,1,6), Vector3.new(0,3,0))
+						makePart("Bottom", Vector3.new(6,1,6), Vector3.new(0,-3,0))
+						makePart("Front", Vector3.new(6,6,1), Vector3.new(0,0,-3))
+						makePart("Back", Vector3.new(6,6,1), Vector3.new(0,0,3))
+						makePart("Left", Vector3.new(1,6,6), Vector3.new(-3,0,0))
+						makePart("Right", Vector3.new(1,6,6), Vector3.new(3,0,0))
+					else
+						local cage = workspace["AntiKB_Cage_"..char.Name]
+						for _,p in ipairs(cage:GetChildren()) do
+							if p:IsA("Part") then
+								if p.Name == "Top" then p.Position = hrp.Position + Vector3.new(0,5,0) end
+								if p.Name == "Bottom" then p.Position = hrp.Position + Vector3.new(0,-5,0) end
+								if p.Name == "Front" then p.Position = hrp.Position + Vector3.new(0,0,-5) end
+								if p.Name == "Back" then p.Position = hrp.Position + Vector3.new(0,0,5) end
+								if p.Name == "Left" then p.Position = hrp.Position + Vector3.new(-5,0,0) end
+								if p.Name == "Right" then p.Position = hrp.Position + Vector3.new(5,0,0) end
+							end
+						end
+					end
+				else
+					local cage = workspace:FindFirstChild("AntiKB_Cage_"..char.Name)
+					if cage then cage:Destroy() end
+				end
+			end
+		end
+
+		task.wait(0.1)
+	end
+end)
