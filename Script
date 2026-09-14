@@ -844,7 +844,7 @@ task.spawn(function()
 						local chrp=c and c:FindFirstChild("HumanoidRootPart")
 						if chrp then
 							local dist=(hrp.Position-chrp.Position).Magnitude
-							if dist<=20 then
+							if dist<=25 then
 								pcall(function()
 									ReplicatedStorage.Remotes.Slap:FireServer(chrp)
 								end)
