@@ -728,7 +728,7 @@ local function TPWaitLookPickup(tool)
 		local gui=handle:FindFirstChild("ItemGui")
 		if gui then gui.Enabled=false end
 	end
-	task.wait(0.5)
+	task.wait(0.4)
 end
 
 task.spawn(function()
@@ -767,7 +767,7 @@ task.spawn(function()
 
 		if GetItemsEnabled then
 			if head.Transparency==1 then
-				task.wait(0.5)
+				task.wait(0.4)
 				continue
 			end
 			local hrp=Char:FindFirstChild("HumanoidRootPart")
@@ -786,35 +786,50 @@ task.spawn(function()
 						end
 					end
 				end
+
 				local firstTP=nil
 				local secondTP=nil
 				local thirdTP=nil
+				local fourthTP=nil
+
 				if not BombPicked and bombTool then
 					firstTP=bombTool
 					BombPicked=true
 				else
 					firstTP=autoItems[1]
 				end
+
 				for _,item in ipairs(autoItems) do
 					if item~=firstTP then
 						secondTP=item
 						break
 					end
 				end
+
 				for _,item in ipairs(autoItems) do
 					if item~=firstTP and item~=secondTP then
 						thirdTP=item
 						break
 					end
 				end
+
+				for _,item in ipairs(autoItems) do
+					if item~=firstTP and item~=secondTP and item~=thirdTP then
+						fourthTP=item
+						break
+					end
+				end
+
 				if firstTP then TPWaitLookPickup(firstTP) end
 				if secondTP then TPWaitLookPickup(secondTP) end
 				if thirdTP then TPWaitLookPickup(thirdTP) end
+				if fourthTP then TPWaitLookPickup(fourthTP) end
+
 				task.wait(8)
 			end
 		end
 
-		task.wait(0.5)
+		task.wait(0.4)
 	end
 end)
 
