@@ -162,23 +162,35 @@ local function InstantLand()
 	ILEnabled = false
 end
 
+local function NotTouchingWorkspace()
+	local hrp = Char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+	for _,p in ipairs(hrp:GetTouchingParts()) do
+		if p:IsDescendantOf(workspace) then
+			return false
+		end
+	end
+	return true
+end
+
 task.spawn(function()
 	while true do
-		-- force InstantLanding OFF if it already teleported
-		if teleportCount >= 1 then
-			ILEnabled = false
-		end
-
 		if ILEnabled then
+			local hrp = Char:FindFirstChild("HumanoidRootPart")
 			local crystal = workspace:FindFirstChild("CrystalBlue", true)
-			if crystal then
-				local t = crystal.Transparency
 
-				if t == 0 and lastTransparency ~= 0 then
-					InstantLand()
+			if hrp and crystal then
+				if NotTouchingWorkspace() then
+					local t = crystal.Transparency
+					if t == 0 and lastTransparency ~= 0 then
+						InstantLand()
+					end
+					lastTransparency = t
+				else
+					lastTransparency = 1
 				end
-
-				lastTransparency = t
+			else
+				lastTransparency = 1
 			end
 		else
 			lastTransparency = 1
