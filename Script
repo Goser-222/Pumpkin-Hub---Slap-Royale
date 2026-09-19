@@ -662,6 +662,52 @@ task.spawn(function()
 	end
 end)
 
+local head=char:WaitForChild("Head")
+local blocked=false
+
+head:GetPropertyChangedSignal("Transparency"):Connect(function()
+	if head.Transparency==1 then
+		GetItemsEnabled = false
+		blocked=true
+		task.delay(10.3,function()
+			blocked=false
+		end)
+	end
+end)
+
+local function pickup(handle)
+	if blocked then return end
+	local id=handle:GetAttribute("ItemId")
+	if not id then return end
+	ItemRemote:FireServer(id)
+	local gui=handle:FindFirstChild("ItemGui")
+	if gui then gui.Enabled=false end
+end
+
+task.spawn(function()
+	while true do
+		local closestHandle=nil
+		local closestDist=15
+		for _,tool in ipairs(Items:GetChildren()) do
+			if tool:IsA("Tool") then
+				local handle=tool:FindFirstChild("Handle")
+				if handle then
+					local d=(handle.Position-hrp.Position).Magnitude
+					if d<closestDist then
+						closestDist=d
+						closestHandle=handle
+					end
+				end
+			end
+		end
+		if closestHandle then
+			task.wait(0.2)
+			pickup(closestHandle)
+		end
+		task.wait(0.1)
+	end
+end)
+
 local lastPicked=nil
 
 local popup=Instance.new("TextLabel")
