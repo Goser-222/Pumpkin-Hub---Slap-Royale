@@ -146,43 +146,44 @@ local function TPAndPickup(tool)
 	task.wait(0.5)
 end
 
+local teleportCount = 0
+local lastTransparency = 1
+
 local function InstantLand()
-	local hrp=Char:FindFirstChild("HumanoidRootPart")
-	local crystal=workspace:FindFirstChild("CrystalBlue",true)
+	if teleportCount >= 1 then return end
+	local hrp = Char:FindFirstChild("HumanoidRootPart")
+	local crystal = workspace:FindFirstChild("CrystalBlue", true)
 	if not hrp or not crystal then return end
-	local target=Ground(crystal.Position)
-	hrp.CFrame=CFrame.new(target,hrp.Position+hrp.CFrame.LookVector)
-end
 
-local function OnlyTouchingSelf()
-	local hrp=Char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return false end
-	local touching=hrp:GetTouchingParts()
-	for _,part in ipairs(touching) do
-		if not part:IsDescendantOf(Char) then
-			return false
-		end
-	end
-	return true
-end
+	local target = Ground(crystal.Position)
+	hrp.CFrame = CFrame.new(target, hrp.Position + hrp.CFrame.LookVector)
 
-local jumped=false
+	teleportCount = teleportCount + 1
+	ILEnabled = false
+end
 
 task.spawn(function()
 	while true do
-		if ILEnabled then
-			local hrp=Char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				local touching=hrp:GetTouchingParts()
-				if #touching==0 and not jumped then
-					jumped=true
-				end
-				if jumped and OnlyTouchingSelf() then
-					InstantLand()
-					jumped=false
-				end
-			end
+		-- force InstantLanding OFF if it already teleported
+		if teleportCount >= 1 then
+			ILEnabled = false
 		end
+
+		if ILEnabled then
+			local crystal = workspace:FindFirstChild("CrystalBlue", true)
+			if crystal then
+				local t = crystal.Transparency
+
+				if t == 0 and lastTransparency ~= 0 then
+					InstantLand()
+				end
+
+				lastTransparency = t
+			end
+		else
+			lastTransparency = 1
+		end
+
 		task.wait(0.05)
 	end
 end)
@@ -844,7 +845,7 @@ task.spawn(function()
 						local chrp=c and c:FindFirstChild("HumanoidRootPart")
 						if chrp then
 							local dist=(hrp.Position-chrp.Position).Magnitude
-							if dist<=20 then
+							if dist<=25 then
 								pcall(function()
 									ReplicatedStorage.Remotes.Slap:FireServer(chrp)
 								end)
