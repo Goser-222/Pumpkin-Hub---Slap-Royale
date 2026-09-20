@@ -158,7 +158,7 @@ local function InstantLand()
 	local target = Ground(crystal.Position)
 	hrp.CFrame = CFrame.new(target, hrp.Position + hrp.CFrame.LookVector)
 
-	teleportCount = teleportCount + 1
+	teleportCount += 1
 	ILEnabled = false
 end
 
@@ -177,14 +177,18 @@ task.spawn(function()
 	while true do
 		if ILEnabled then
 			local hrp = Char:FindFirstChild("HumanoidRootPart")
+			local head = Char:FindFirstChild("Head")
 			local crystal = workspace:FindFirstChild("CrystalBlue", true)
 
-			if hrp and crystal then
+			if hrp and head and crystal then
 				if NotTouchingWorkspace() then
-					local t = crystal.Transparency
+
+					local t = head.Transparency   -- ⭐ LOCAL PLAYER ONLY
+
 					if t == 0 and lastTransparency ~= 0 then
 						InstantLand()
 					end
+
 					lastTransparency = t
 				else
 					lastTransparency = 1
