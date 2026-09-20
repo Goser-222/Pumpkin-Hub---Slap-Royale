@@ -146,53 +146,60 @@ local function TPAndPickup(tool)
 	task.wait(0.5)
 end
 
+local Player = game.Players.LocalPlayer
+local Char = Player.Character or Player.CharacterAdded:Wait()
+
 local teleportCount = 0
 local lastTransparency = 1
+local IsCrystalTeleport = false
+local ILEnabled = false
+
+local function Ground(pos)
+	local ray = Ray.new(pos, Vector3.new(0, -500, 0))
+	local part, hitPos = workspace:FindPartOnRay(ray)
+	return hitPos or pos
+end
 
 local function InstantLand()
 	if teleportCount >= 1 then return end
+
 	local hrp = Char:FindFirstChild("HumanoidRootPart")
 	local crystal = workspace:FindFirstChild("CrystalBlue", true)
 	if not hrp or not crystal then return end
 
 	local target = Ground(crystal.Position)
+
+	IsCrystalTeleport = true
 	hrp.CFrame = CFrame.new(target, hrp.Position + hrp.CFrame.LookVector)
 
-	teleportCount += 1
+	if IsCrystalTeleport then
+		teleportCount += 1
+	end
+
+	IsCrystalTeleport = false
 	ILEnabled = false
 end
 
-local function NotTouchingWorkspace()
-	local hrp = Char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return false end
-	for _,p in ipairs(hrp:GetTouchingParts()) do
-		if p:IsDescendantOf(workspace) then
-			return false
-		end
-	end
-	return true
-end
+Player.CharacterAdded:Connect(function(c)
+	Char = c
+	lastTransparency = 1
+end)
 
 task.spawn(function()
 	while true do
-		if ILEnabled then
-			local hrp = Char:FindFirstChild("HumanoidRootPart")
+		if ILEnabled and teleportCount < 1 then
 			local head = Char:FindFirstChild("Head")
+			local hrp = Char:FindFirstChild("HumanoidRootPart")
 			local crystal = workspace:FindFirstChild("CrystalBlue", true)
 
-			if hrp and head and crystal then
-				if NotTouchingWorkspace() then
+			if head and hrp and crystal then
+				local t = head.Transparency
 
-					local t = head.Transparency   -- ⭐ LOCAL PLAYER ONLY
-
-					if t == 0 and lastTransparency ~= 0 then
-						InstantLand()
-					end
-
-					lastTransparency = t
-				else
-					lastTransparency = 1
+				if t == 0 and lastTransparency ~= 0 then
+					InstantLand()
 				end
+
+				lastTransparency = t
 			else
 				lastTransparency = 1
 			end
@@ -200,7 +207,7 @@ task.spawn(function()
 			lastTransparency = 1
 		end
 
-		task.wait(0.05)
+		task.wait(0.1)
 	end
 end)
 
