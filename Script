@@ -354,6 +354,19 @@ CombatTab:CreateToggle({
 	end
 })
 
+local SlapAuraKey = Enum.KeyCode.G
+local SlapAuraToggle = false
+
+CombatTab:CreateKeybind({
+	Name = "Slap Aura Key",
+	CurrentKeybind = "G",
+	HoldToInteract = false,
+	Flag = "SlapAuraKeybind",
+	Callback = function(key)
+		SlapAuraKey = key
+	end,
+})
+
 CombatTab:CreateToggle({
 	Name="Auto Win",
 	CurrentValue=false,
@@ -807,19 +820,19 @@ end
 
 task.spawn(function()
 	while true do
-		local timeLeftObj=
+		local timeLeftObj =
 			lp.PlayerGui:FindFirstChild("Countdown")
 			and lp.PlayerGui.Countdown:FindFirstChild("Countdown")
 			and lp.PlayerGui.Countdown.Countdown:FindFirstChild("TimeLeft")
 
-		local allowed=false
+		local allowed = false
 
 		if timeLeftObj then
-			local t=timeLeftObj.Text
-			if t=="1" or t=="2" or t=="3" then
+			local t = timeLeftObj.Text
+			if t == "1" or t == "2" or t == "3" then
 				task.wait(0.1)
-				if timeLeftObj.Text==t then
-					allowed=true
+				if timeLeftObj.Text == t then
+					allowed = true
 				end
 			end
 		end
@@ -832,7 +845,7 @@ task.spawn(function()
 			ShowPopup("Countdown is 3 or less — TP allowed")
 		end
 
-		if timeLeftObj and timeLeftObj.Text=="1" then
+		if timeLeftObj and timeLeftObj.Text == "1" then
 			task.wait(1.2)
 			if ILEnabled then
 				InstantLand()
@@ -840,64 +853,55 @@ task.spawn(function()
 		end
 
 		if GetItemsEnabled then
-			if head.Transparency==1 then
+			if head.Transparency == 1 then
 				task.wait(0.4)
 				continue
 			end
-			local hrp=Char:FindFirstChild("HumanoidRootPart")
+
+			local hrp = Char:FindFirstChild("HumanoidRootPart")
 			if hrp then
-				local autoItems={}
-				local bombTool=nil
+				local bombList = {}
+				local strengthList = {}
+				local bullList = {}
+				local bobaList = {}
+				local speedList = {}
+				local frogList = {}
+
 				for _,obj in ipairs(workspace:GetDescendants()) do
 					if obj:IsA("Tool") then
-						local handle=obj:FindFirstChild("Handle")
+						local handle = obj:FindFirstChild("Handle")
 						if handle then
-							if obj.Name=="Bomb" and not BombPicked then
-								bombTool=obj
-							elseif AutoUseList[obj.Name] then
-								table.insert(autoItems,obj)
+							if obj.Name == "Bomb" then
+								table.insert(bombList, obj)
+							elseif obj.Name == "Potion of Strength" then
+								table.insert(strengthList, obj)
+							elseif obj.Name == "Bull's essence" then
+								table.insert(bullList, obj)
+							elseif obj.Name == "Boba" then
+								table.insert(bobaList, obj)
+							elseif obj.Name == "Speed Potion" then
+								table.insert(speedList, obj)
+							elseif obj.Name == "Frog Potion" then
+								table.insert(frogList, obj)
 							end
 						end
 					end
 				end
 
-				local firstTP=nil
-				local secondTP=nil
-				local thirdTP=nil
-				local fourthTP=nil
+				local order = {
+					bombList,
+					strengthList,
+					bullList,
+					bobaList,
+					speedList,
+					frogList
+				}
 
-				if not BombPicked and bombTool then
-					firstTP=bombTool
-					BombPicked=true
-				else
-					firstTP=autoItems[1]
-				end
-
-				for _,item in ipairs(autoItems) do
-					if item~=firstTP then
-						secondTP=item
-						break
+				for _,group in ipairs(order) do
+					for _,tool in ipairs(group) do
+						TPWaitLookPickup(tool)
 					end
 				end
-
-				for _,item in ipairs(autoItems) do
-					if item~=firstTP and item~=secondTP then
-						thirdTP=item
-						break
-					end
-				end
-
-				for _,item in ipairs(autoItems) do
-					if item~=firstTP and item~=secondTP and item~=thirdTP then
-						fourthTP=item
-						break
-					end
-				end
-
-				if firstTP then TPWaitLookPickup(firstTP) end
-				if secondTP then TPWaitLookPickup(secondTP) end
-				if thirdTP then TPWaitLookPickup(thirdTP) end
-				if fourthTP then TPWaitLookPickup(fourthTP) end
 
 				task.wait(8)
 			end
@@ -1053,5 +1057,26 @@ task.spawn(function()
 		end
 
 		task.wait(0.1)
+	end
+end)
+
+UIS.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == SlapAuraKey then
+		SlapAuraToggle = not SlapAuraToggle
+		_G.SlapAura = SlapAuraToggle
+		if SlapAuraToggle then
+			Rayfield:Notify({
+				Title = "Slap Aura",
+				Content = "Enabled",
+				Duration = 2
+			})
+		else
+			Rayfield:Notify({
+				Title = "Slap Aura",
+				Content = "Disabled",
+				Duration = 2
+			})
+		end
 	end
 end)
