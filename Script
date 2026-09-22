@@ -354,18 +354,13 @@ CombatTab:CreateToggle({
 	end
 })
 
-local SlapAuraKey = Enum.KeyCode.G
-local SlapAuraToggle = false
-
-CombatTab:CreateKeybind({
-	Name = "Slap Aura Key",
-	CurrentKeybind = "G",
-	HoldToInteract = false,
-	Flag = "SlapAuraKeybind",
-	Callback = function(key)
-		SlapAuraKey = key
-	end,
-})
+UIS.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == SlapAuraKey then
+		SlapAuraToggle = not SlapAuraToggle
+		SlapAuraButton:Set(SlapAuraToggle)
+	end
+end)
 
 CombatTab:CreateToggle({
 	Name="Auto Win",
@@ -818,6 +813,10 @@ local function TPWaitLookPickup(tool)
 	task.wait(0.4)
 end
 
+Players.LocalPlayer.CharacterAdded:Connect(function()
+	BombPickedThisRound = false
+end)
+
 task.spawn(function()
 	while true do
 		local timeLeftObj =
@@ -840,7 +839,6 @@ task.spawn(function()
 		if not allowed then
 			ShowPopup("Countdown too high — TP blocked")
 			task.wait(0.05)
-			continue
 		else
 			ShowPopup("Countdown is 3 or less — TP allowed")
 		end
@@ -852,58 +850,72 @@ task.spawn(function()
 			end
 		end
 
-		if GetItemsEnabled then
+		if GetItemsEnabled and allowed then
 			if head.Transparency == 1 then
-				task.wait(0.4)
-				continue
-			end
+				task.wait(0.2)
+			else
+				local hrp = Char:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					local bomb = nil
+					local strengthList = {}
+					local bullList = {}
+					local bobaList = {}
+					local speedList = {}
+					local frogList = {}
 
-			local hrp = Char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				local bombList = {}
-				local strengthList = {}
-				local bullList = {}
-				local bobaList = {}
-				local speedList = {}
-				local frogList = {}
-
-				for _,obj in ipairs(workspace:GetDescendants()) do
-					if obj:IsA("Tool") then
-						local handle = obj:FindFirstChild("Handle")
-						if handle then
-							if obj.Name == "Bomb" then
-								table.insert(bombList, obj)
-							elseif obj.Name == "Potion of Strength" then
-								table.insert(strengthList, obj)
-							elseif obj.Name == "Bull's essence" then
-								table.insert(bullList, obj)
-							elseif obj.Name == "Boba" then
-								table.insert(bobaList, obj)
-							elseif obj.Name == "Speed Potion" then
-								table.insert(speedList, obj)
-							elseif obj.Name == "Frog Potion" then
-								table.insert(frogList, obj)
+					for _,obj in ipairs(workspace:GetDescendants()) do
+						if obj:IsA("Tool") then
+							local handle = obj:FindFirstChild("Handle")
+							if handle then
+								if obj.Name == "Bomb" and not BombPickedThisRound and not bomb then
+									bomb = obj
+								elseif obj.Name == "Potion of Strength" then
+									table.insert(strengthList, obj)
+								elseif obj.Name == "Bull's essence" then
+									table.insert(bullList, obj)
+								elseif obj.Name == "Boba" then
+									table.insert(bobaList, obj)
+								elseif obj.Name == "Speed Potion" then
+									table.insert(speedList, obj)
+								elseif obj.Name == "Frog Potion" then
+									table.insert(frogList, obj)
+								end
 							end
 						end
 					end
-				end
 
-				local order = {
-					bombList,
-					strengthList,
-					bullList,
-					bobaList,
-					speedList,
-					frogList
-				}
+					local order = {
+						{bomb},
+						strengthList,
+						bullList,
+						bobaList,
+						speedList,
+						frogList
+					}
 
-				for _,group in ipairs(order) do
-					for _,tool in ipairs(group) do
-						TPWaitLookPickup(tool)
+					local picked = 0
+
+					for _,group in ipairs(order) do
+						for _,tool in ipairs(group) do
+							if tool then
+								TPWaitLookPickup(tool)
+								picked = picked + 1
+								if tool.Name == "Bomb" then
+									BombPickedThisRound = true
+								end
+								if picked >= 4 then
+									task.wait(0)
+									break
+								end
+							end
+						end
+						if picked >= 4 then
+							break
+						end
 					end
-				end
 
-				task.wait(8)
+					task.wait(8)
+				end
 			end
 		end
 
@@ -911,28 +923,46 @@ task.spawn(function()
 	end
 end)
 
+local lastSlap = 0
+
+local function NotRagdolled(char)
+	local hum = char:FindFirstChild("Humanoid")
+	if not hum then return false end
+	if hum.Health <= 0 then return false end
+	if hum.PlatformStand == true then return false end
+	return true
+end
+
 task.spawn(function()
 	while true do
 		if _G.SlapAura then
-			local hrp=Char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				for _,player in ipairs(Players:GetPlayers()) do
-					if player~=lp then
-						local c=player.Character
-						local chrp=c and c:FindFirstChild("HumanoidRootPart")
-						if chrp then
-							local dist=(hrp.Position-chrp.Position).Magnitude
-							if dist<=25 then
-								pcall(function()
-									ReplicatedStorage.Remotes.Slap:FireServer(chrp)
-								end)
+			local now = tick()
+			if now - lastSlap >= 0.5 then
+				local hrp = Char:FindFirstChild("HumanoidRootPart")
+				local toolEquipped = Char:FindFirstChildWhichIsA("Tool")
+
+				if hrp and toolEquipped then
+					for _,player in ipairs(Players:GetPlayers()) do
+						if player ~= lp then
+							local c = player.Character
+							local chrp = c and c:FindFirstChild("HumanoidRootPart")
+
+							if chrp and NotRagdolled(c) then
+								local dist = (hrp.Position - chrp.Position).Magnitude
+								if dist <= 20 then
+									lastSlap = now
+									pcall(function()
+										ReplicatedStorage.Remotes.Slap:FireServer(chrp)
+									end)
+									break
+								end
 							end
 						end
 					end
 				end
 			end
 		end
-		task.wait(0.5)
+		task.wait(0.01)
 	end
 end)
 
@@ -1060,23 +1090,3 @@ task.spawn(function()
 	end
 end)
 
-UIS.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.KeyCode == SlapAuraKey then
-		SlapAuraToggle = not SlapAuraToggle
-		_G.SlapAura = SlapAuraToggle
-		if SlapAuraToggle then
-			Rayfield:Notify({
-				Title = "Slap Aura",
-				Content = "Enabled",
-				Duration = 2
-			})
-		else
-			Rayfield:Notify({
-				Title = "Slap Aura",
-				Content = "Disabled",
-				Duration = 2
-			})
-		end
-	end
-end)
