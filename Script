@@ -852,7 +852,7 @@ task.spawn(function()
 
 		if GetItemsEnabled and allowed then
 			if head.Transparency == 1 then
-				task.wait(0.2)
+				task.wait(0.1)
 			else
 				local hrp = Char:FindFirstChild("HumanoidRootPart")
 				if hrp then
@@ -914,12 +914,12 @@ task.spawn(function()
 						end
 					end
 
-					task.wait(8)
+					task.wait(5)
 				end
 			end
 		end
 
-		task.wait(0.4)
+		task.wait(0.2)
 	end
 end)
 
