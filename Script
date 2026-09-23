@@ -937,7 +937,7 @@ task.spawn(function()
 	while true do
 		if _G.SlapAura then
 			local now = tick()
-			if now - lastSlap >= 0.5 then
+			if now - lastSlap >= 0.2 then
 				local hrp = Char:FindFirstChild("HumanoidRootPart")
 				local toolEquipped = Char:FindFirstChildWhichIsA("Tool")
 
@@ -962,7 +962,7 @@ task.spawn(function()
 				end
 			end
 		end
-		task.wait(0.01)
+		task.wait(0.005)
 	end
 end)
 
