@@ -810,7 +810,7 @@ local function TPWaitLookPickup(tool)
 		local gui=handle:FindFirstChild("ItemGui")
 		if gui then gui.Enabled=false end
 	end
-	task.wait(0.3)
+	task.wait(0.25)
 end
 
 Players.LocalPlayer.CharacterAdded:Connect(function()
