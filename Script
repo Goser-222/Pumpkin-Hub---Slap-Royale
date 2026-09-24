@@ -381,14 +381,14 @@ local function IsRagdolled(char)
 end
 
 task.spawn(function()
-	while task.wait(4) do
+	while task.wait(2) do
 		if not _G.AutoWin then
 			continue
 		end
 
 		if hitCount >= 5 then
 			hitCount = 0
-			task.wait(7)
+			task.wait(10)
 		end
 
 		local hrp = Char and Char:FindFirstChild("HumanoidRootPart")
