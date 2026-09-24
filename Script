@@ -771,10 +771,10 @@ local function TPWaitLookPickup(tool)
 	lastPicked=tool
 	local toolPos=handle.Position
 	local sideDirs={
-		Vector3.new(5,0,0),
-		Vector3.new(-5,0,0),
-		Vector3.new(0,0,5),
-		Vector3.new(0,0,-5)
+		Vector3.new(3,0,0),
+		Vector3.new(-3,0,0),
+		Vector3.new(0,0,3),
+		Vector3.new(0,0,-3)
 	}
 	local chosenSide=nil
 	for _,dir in ipairs(sideDirs) do
