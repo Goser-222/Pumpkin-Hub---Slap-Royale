@@ -370,61 +370,55 @@ CombatTab:CreateToggle({
 	end
 })
 
-local TweenService = game:GetService("TweenService")
- 
 local hitCount = 0
- 
+
 local function IsRagdolled(char)
-local hum = char:FindFirstChild("Humanoid")
-if not hum then return true end
-if hum.Health <= 0 then return true end
-if hum.PlatformStand == true then return true end
-return false
+	local hum = char:FindFirstChild("Humanoid")
+	if not hum then return true end
+	if hum.Health <= 0 then return true end
+	if hum.PlatformStand then return true end
+	return false
 end
- 
+
 task.spawn(function()
-while true do
-if _G.AutoWin then
-if hitCount >= 5 then
-task.wait(8)
-hitCount = 0
-end
- 
-local hrp = Char:FindFirstChild("HumanoidRootPart")
-if hrp then
-local closest = nil
-local closestDist = math.huge
- 
-for _, plr in ipairs(Players:GetPlayers()) do
-if plr ~= LocalPlayer then
-local c = plr.Character
-local chrp = c and c:FindFirstChild("HumanoidRootPart")
- 
-if c and chrp and not IsRagdolled(c) then
-local d = (hrp.Position - chrp.Position).Magnitude
-if d < closestDist then
-closestDist = d
-closest = chrp
-end
-end
-end
-end
- 
-if closest then
-local tween = TweenService:Create(
-hrp,
-TweenInfo.new(0.1, Enum.EasingStyle.Linear),
-{CFrame = closest.CFrame}
-)
-tween:Play()
- 
-hitCount += 1
-end
-end
-end
- 
-task.wait(3)
-end
+	while task.wait(4) do
+		if not _G.AutoWin then
+			continue
+		end
+
+		if hitCount >= 5 then
+			hitCount = 0
+			task.wait(7)
+		end
+
+		local hrp = Char and Char:FindFirstChild("HumanoidRootPart")
+		if not hrp then
+			continue
+		end
+
+		local closest, closestDist = nil, math.huge
+
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LocalPlayer then
+				local char = plr.Character
+				local targetHrp = char and char:FindFirstChild("HumanoidRootPart")
+
+				if targetHrp and not IsRagdolled(char) then
+					local dist = (hrp.Position - targetHrp.Position).Magnitude
+
+					if dist < closestDist then
+						closestDist = dist
+						closest = targetHrp
+					end
+				end
+			end
+		end
+
+		if closest then
+			hrp.CFrame = closest.CFrame
+			hitCount += 1
+		end
+	end
 end)
 
 ItemsTab:CreateToggle({
@@ -788,10 +782,10 @@ local function TPWaitLookPickup(tool)
 	lastPicked=tool
 	local toolPos=handle.Position
 	local sideDirs={
-		Vector3.new(3,0,0),
-		Vector3.new(-3,0,0),
-		Vector3.new(0,0,3),
-		Vector3.new(0,0,-3)
+		Vector3.new(2,0,0),
+		Vector3.new(-2,0,0),
+		Vector3.new(0,0,2),
+		Vector3.new(0,0,-2)
 	}
 	local chosenSide=nil
 	for _,dir in ipairs(sideDirs) do
