@@ -370,44 +370,61 @@ CombatTab:CreateToggle({
 	end
 })
 
-local TweenService=game:GetService("TweenService")
-
+local TweenService = game:GetService("TweenService")
+ 
+local hitCount = 0
+ 
 local function IsRagdolled(char)
-	local hum=char:FindFirstChild("Humanoid")
-	if not hum then return true end
-	if hum.Health<=0 then return true end
-	if hum.PlatformStand==true then return true end
-	return false
+local hum = char:FindFirstChild("Humanoid")
+if not hum then return true end
+if hum.Health <= 0 then return true end
+if hum.PlatformStand == true then return true end
+return false
 end
-
+ 
 task.spawn(function()
-	while true do
-		if _G.AutoWin then
-			local hrp=Char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				local closest=nil
-				local closestDist=math.huge
-				for _,plr in ipairs(Players:GetPlayers()) do
-					if plr~=LocalPlayer then
-						local c=plr.Character
-						local chrp=c and c:FindFirstChild("HumanoidRootPart")
-						if c and chrp and not IsRagdolled(c) then
-							local d=(hrp.Position-chrp.Position).Magnitude
-							if d<closestDist then
-								closestDist=d
-								closest=chrp
-							end
-						end
-					end
-				end
-				if closest then
-					local tween=TweenService:Create(hrp,TweenInfo.new(0.1,Enum.EasingStyle.Linear),{CFrame=closest.CFrame})
-					tween:Play()
-				end
-			end
-		end
-		task.wait(4)
-	end
+while true do
+if _G.AutoWin then
+if hitCount >= 5 then
+task.wait(6)
+hitCount = 0
+end
+ 
+local hrp = Char:FindFirstChild("HumanoidRootPart")
+if hrp then
+local closest = nil
+local closestDist = math.huge
+ 
+for _, plr in ipairs(Players:GetPlayers()) do
+if plr ~= LocalPlayer then
+local c = plr.Character
+local chrp = c and c:FindFirstChild("HumanoidRootPart")
+ 
+if c and chrp and not IsRagdolled(c) then
+local d = (hrp.Position - chrp.Position).Magnitude
+if d < closestDist then
+closestDist = d
+closest = chrp
+end
+end
+end
+end
+ 
+if closest then
+local tween = TweenService:Create(
+hrp,
+TweenInfo.new(0.1, Enum.EasingStyle.Linear),
+{CFrame = closest.CFrame}
+)
+tween:Play()
+ 
+hitCount += 1
+end
+end
+end
+ 
+task.wait(3)
+end
 end)
 
 ItemsTab:CreateToggle({
