@@ -386,7 +386,7 @@ task.spawn(function()
 while true do
 if _G.AutoWin then
 if hitCount >= 5 then
-task.wait(6)
+task.wait(8)
 hitCount = 0
 end
  
