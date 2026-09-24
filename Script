@@ -406,7 +406,7 @@ task.spawn(function()
 				end
 			end
 		end
-		task.wait(5)
+		task.wait(4)
 	end
 end)
 
