@@ -381,7 +381,7 @@ local function IsRagdolled(char)
 end
 
 task.spawn(function()
-	while task.wait(2) do
+	while task.wait(5) do
 		if not _G.AutoWin then
 			continue
 		end
