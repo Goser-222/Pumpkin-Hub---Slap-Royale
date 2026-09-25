@@ -560,6 +560,14 @@ SafetyTab:CreateToggle({
 })
 
 SafetyTab:CreateToggle({
+	Name = "Anti Cube of Death",
+	CurrentValue = false,
+	Callback = function(v)
+		AntiCubeOfDeathEnabled = v
+	end
+})
+
+SafetyTab:CreateToggle({
 	Name = "Anti Knockback",
 	CurrentValue = false,
 	Callback = function(v)
@@ -1149,3 +1157,32 @@ task.spawn(function()
 		task.wait(0.1)
 	end
 end)
+
+local AntiCubeOfDeathEnabled = false
+
+SafetyTab:CreateToggle({
+	Name = "Anti Cube of Death",
+	CurrentValue = false,
+	Callback = function(v)
+		AntiCubeOfDeathEnabled = v
+	end
+})
+
+task.spawn(function()
+	while true do
+		if AntiCubeOfDeathEnabled then
+			local rubble = workspace:FindFirstChild("Rubbled Remains")
+
+			if rubble then
+				for _, obj in ipairs(rubble:GetDescendants()) do
+					if obj.Name == "Cube of Death" or obj.Name == "Death" then
+						obj:Destroy()
+					end
+				end
+			end
+		end
+
+		task.wait(0.1)
+	end
+end)
+
