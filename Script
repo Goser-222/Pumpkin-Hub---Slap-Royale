@@ -985,11 +985,11 @@ task.spawn(function()
 			if hum and hrp then
 				local dir=hum.MoveDirection
 				if dir.Magnitude>0 then
-					hrp.CFrame=hrp.CFrame+(dir*2)
+					hrp.CFrame=hrp.CFrame+(dir*0.5)
 				end
 			end
 		end
-		task.wait(1)
+		task.wait(0.07)
 	end
 end)
 
