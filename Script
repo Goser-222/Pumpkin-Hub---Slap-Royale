@@ -528,6 +528,105 @@ OtherTab:CreateToggle({
 })
 
 OtherTab:CreateButton({
+	Name = "Get Lab Code",
+	Callback = function()
+		local codeBrick = workspace:FindFirstChild("Map")
+			and workspace.Map:FindFirstChild("CodeBrick")
+
+		local surfaceGui = codeBrick
+			and codeBrick:FindFirstChild("SurfaceGui")
+
+		if not surfaceGui then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "CodeBrick SurfaceGui not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Image asset ID -> digit
+		local codeMap = {
+			["9648769161"] = "4",
+			["9648765536"] = "2",
+			["9648762863"] = "3",
+			["9648759883"] = "9",
+			["9648755440"] = "8",
+			["9648752438"] = "2",
+			["9648749145"] = "8",
+			["9648745618"] = "3",
+			["9648742013"] = "7",
+			["9648738553"] = "8",
+			["9648734698"] = "2",
+			["9648730082"] = "6",
+			["9648723237"] = "3",
+			["9648718450"] = "6",
+			["9648715920"] = "6",
+			["9648712563"] = "2"
+		}
+
+		-- Get the image objects in GUI order.
+		local images = {}
+
+		for _, obj in ipairs(surfaceGui:GetChildren()) do
+			if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+				table.insert(images, obj)
+			end
+		end
+
+		if #images < 4 then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "Could not find 4 code images.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Sort by LayoutOrder, then by X position as a fallback.
+		table.sort(images, function(a, b)
+			if a.LayoutOrder ~= b.LayoutOrder then
+				return a.LayoutOrder < b.LayoutOrder
+			end
+
+			return a.AbsolutePosition.X < b.AbsolutePosition.X
+		end)
+
+		local code = {}
+
+		for i = 1, 4 do
+			local imageId = tostring(images[i].Image):match("id=(%d+)")
+
+			-- Also supports rbxassetid:// IDs.
+			if not imageId then
+				imageId = tostring(images[i].Image):match("rbxassetid://(%d+)")
+			end
+
+			local digit = imageId and codeMap[imageId]
+
+			if not digit then
+				Rayfield:Notify({
+					Title = "Get Lab Code",
+					Content = "Unknown image in position " .. i .. ".",
+					Duration = 5
+				})
+				return
+			end
+
+			code[i] = digit
+		end
+
+		local CodeEsp = table.concat(code)
+
+		Rayfield:Notify({
+			Title = "Lab Code",
+			Content = "You have code [ " .. CodeEsp .. " ]",
+			Duration = 5
+		})
+	end
+})
+
+OtherTab:CreateButton({
 	Name="Lobby Hider",
 	Callback=function()
 		local hrp=Char:FindFirstChild("HumanoidRootPart")
