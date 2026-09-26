@@ -532,65 +532,84 @@ OtherTab:CreateButton({
 	Callback = function()
 
 		local codes = {
-			["http://www.roblox.com/asset/?id=9648755440"] = "8",
-			["http://www.roblox.com/asset/?id=9648765536"] = "2",
-			["http://www.roblox.com/asset/?id=9648723237"] = "3",
-			["http://www.roblox.com/asset/?id=9648718450"] = "6",
-			["http://www.roblox.com/asset/?id=9648769161"] = "4",
-			["http://www.roblox.com/asset/?id=9648730082"] = "6",
-			["http://www.roblox.com/asset/?id=9648734698"] = "2",
-			["http://www.roblox.com/asset/?id=9648712563"] = "2",
-			["http://www.roblox.com/asset/?id=9648742013"] = "7",
-			["http://www.roblox.com/asset/?id=9648745618"] = "3",
-			["http://www.roblox.com/asset/?id=9648715920"] = "6",
-			["http://www.roblox.com/asset/?id=9648752438"] = "2",
-			["http://www.roblox.com/asset/?id=9648749145"] = "8",
-			["http://www.roblox.com/asset/?id=9648759883"] = "9",
-			["http://www.roblox.com/asset/?id=9648738553"] = "8"
+			["9648755440"] = "8",
+			["9648765536"] = "2",
+			["9648723237"] = "3",
+			["9648718450"] = "6",
+			["9648769161"] = "4",
+			["9648730082"] = "6",
+			["9648734698"] = "2",
+			["9648712563"] = "2",
+			["9648742013"] = "7",
+			["9648745618"] = "3",
+			["9648715920"] = "6",
+			["9648752438"] = "2",
+			["9648749145"] = "8",
+			["9648759883"] = "9",
+			["9648738553"] = "8"
 		}
 
-		local surfaceGui = game.Workspace.Map.CodeBrick.SurfaceGui
+		local surfaceGui = workspace.Map.CodeBrick.SurfaceGui
 
-		local images = {}
+		-- Find the actual IMGTemplate objects
+		local templates = {}
 
-		-- Get the code images
-		for _, v in ipairs(surfaceGui:GetChildren()) do
-			if v.Name == "IMGTemplate" then
-				table.insert(images, v)
+		for _, obj in ipairs(surfaceGui:GetChildren()) do
+			if obj.Name == "IMGTemplate" then
+				table.insert(templates, obj)
 			end
 		end
 
-		if #images < 4 then
+		if #templates ~= 4 then
 			Rayfield:Notify({
 				Title = "Get Lab Code",
-				Content = "Could not find 4 code images.",
+				Content = "Found " .. #templates .. " images instead of 4.",
 				Duration = 5
 			})
 			return
 		end
 
-		-- Sort images from left to right
-		table.sort(images, function(a, b)
-			return a.AbsolutePosition.X < b.AbsolutePosition.X
+		-- Use the GUI's actual position.
+		-- X is primary, Y is secondary.
+		table.sort(templates, function(a, b)
+			local ax = a.AbsolutePosition.X
+			local bx = b.AbsolutePosition.X
+
+			if math.abs(ax - bx) > 1 then
+				return ax < bx
+			end
+
+			return a.AbsolutePosition.Y < b.AbsolutePosition.Y
 		end)
 
-		local CodeEsp = ""
+		local result = {}
 
-		for i = 1, 4 do
-			local image = images[i].Image
-			local number = codes[image]
+		for i, imageObject in ipairs(templates) do
 
-			if not number then
+			local image = tostring(imageObject.Image)
+
+			-- Extract the numeric Roblox asset ID.
+			local assetId =
+				image:match("[?&]id=(%d+)")
+				or image:match("rbxassetid://(%d+)")
+				or image:match("(%d+)$")
+
+			local digit = assetId and codes[assetId]
+
+			if not digit then
 				Rayfield:Notify({
 					Title = "Get Lab Code",
-					Content = "Unknown code image: " .. tostring(image),
+					Content = "Unknown image at position " .. i
+						.. ": " .. image,
 					Duration = 5
 				})
 				return
 			end
 
-			CodeEsp = CodeEsp .. number
+			result[i] = digit
 		end
+
+		local CodeEsp = table.concat(result)
 
 		Rayfield:Notify({
 			Title = "You have code [ " .. CodeEsp .. " ]",
