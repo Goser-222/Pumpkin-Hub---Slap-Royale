@@ -448,12 +448,58 @@ ItemsTab:CreateToggle({
 local AutoBombBusEnabled=false
 
 ItemsTab:CreateToggle({
-	Name="Auto Bomb Bus",
+	Name="Auto Bomb Bus (Currently not working)",
 	CurrentValue=false,
 	Callback=function(v)
 		AutoBombBusEnabled=v
 	end
 })
+
+local WaitForBombBusEnabled = false
+local WaitForBombBusRunning = false
+
+ItemsTab:CreateToggle({
+	Name = "Wait for Bomb Bus (Currently not working)",
+	CurrentValue = false,
+	Callback = function(v)
+		WaitForBombBusEnabled = v
+	end
+})
+
+task.spawn(function()
+	while true do
+		if WaitForBombBusEnabled
+			and not WaitForBombBusRunning then
+
+			local timeLeftObj = GetCountdownObject()
+
+			if timeLeftObj and timeLeftObj.Text == "1" then
+				WaitForBombBusRunning = true
+
+				-- Wait 0.5 seconds after countdown reaches 1
+				task.wait(0.5)
+
+				if WaitForBombBusEnabled then
+					-- Disable Get Items
+					local wasEnabled = GetItemsEnabled
+					GetItemsEnabled = false
+
+					-- Keep Get Items disabled for 13 seconds
+					task.wait(13)
+
+					-- Only restore if the toggle is still enabled
+					if WaitForBombBusEnabled and wasEnabled then
+						GetItemsEnabled = true
+					end
+				end
+
+				WaitForBombBusRunning = false
+			end
+		end
+
+		task.wait(0.05)
+	end
+end)
 
 ESPTab:CreateToggle({
 	Name="Player ESP",
