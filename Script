@@ -777,7 +777,6 @@ task.spawn(function()
 	end
 end)
 
---// AUTO ITEM PICKUP
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -786,316 +785,472 @@ local char = lp.Character or lp.CharacterAdded:Wait()
 
 local Items = workspace:WaitForChild("Items")
 local ItemRemote = ReplicatedStorage.Remotes.Item
+local BusJumping = ReplicatedStorage.Remotes.BusJumping
 
 local blocked = false
+local recoveryRunning = false
+local lastPicked = nil
 
-lp.CharacterAdded:Connect(function(c)
-	char = c
-end)
+local AllowedTools = {
+	["Bomb"] = true,
+	["Potion of Strength"] = true,
+	["Bull's essence"] = true,
+	["Boba"] = true,
+	["Speed Potion"] = true,
+	["Frog Potion"] = true
+}
 
 local function updateCharacter(c)
 	char = c
-
-	local head = c:WaitForChild("Head")
-
-	head:GetPropertyChangedSignal("Transparency"):Connect(function()
-		if head.Transparency == 1 then
-			blocked = true
-
-			task.delay(10.3, function()
-				blocked = false
-			end)
-		end
-	end)
+	blocked = false
+	recoveryRunning = false
+	lastPicked = nil
 end
 
-updateCharacter(char)
+lp.CharacterAdded:Connect(updateCharacter)
 
-local function pickup(handle)
-	-- NEVER pick up anything unless Get Items is enabled
+local function GetRightLeg(c)
+	return c:FindFirstChild("RightUpperLeg")
+		or c:FindFirstChild("RightLowerLeg")
+		or c:FindFirstChild("RightFoot")
+		or c:FindFirstChild("Right Leg")
+end
+
+local function GetCountdownObject()
+	local countdown = lp.PlayerGui:FindFirstChild("Countdown")
+	local container = countdown and countdown:FindFirstChild("Countdown")
+	return container and container:FindFirstChild("TimeLeft")
+end
+
+local function GetCountdown()
+	local obj = GetCountdownObject()
+	if not obj then
+		return nil
+	end
+	return tonumber(obj.Text)
+end
+
+local function CountdownAllowed()
+	local value = GetCountdown()
+	return value ~= nil and value >= 1 and value <= 3
+end
+
+local function FindAllowedTool(maxDistance)
+	local currentChar = lp.Character
+	local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+
+	if not hrp then
+		return nil
+	end
+
+	local closest = nil
+	local closestDistance = maxDistance or math.huge
+
+	for _, tool in ipairs(Items:GetChildren()) do
+		if tool:IsA("Tool") and AllowedTools[tool.Name] then
+			local handle = tool:FindFirstChild("Handle")
+
+			if handle then
+				local distance = (handle.Position - hrp.Position).Magnitude
+
+				if distance < closestDistance then
+					closestDistance = distance
+					closest = tool
+				end
+			end
+		end
+	end
+
+	return closest
+end
+
+local function Pickup(handle)
 	if not GetItemsEnabled then
-		return
+		return false
 	end
 
 	if blocked then
-		return
+		return false
+	end
+
+	if not CountdownAllowed() then
+		return false
 	end
 
 	if not handle or not handle.Parent then
-		return
+		return false
 	end
 
 	local id = handle:GetAttribute("ItemId")
+
 	if not id then
-		return
+		return false
 	end
 
 	ItemRemote:FireServer(id)
 
 	local gui = handle:FindFirstChild("ItemGui")
+
 	if gui then
 		gui.Enabled = false
 	end
+
+	return true
 end
 
-task.spawn(function()
-	while true do
-		-- Toggle OFF = absolutely no automatic pickup
-		if GetItemsEnabled then
-			local currentChar = lp.Character
-			local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+local popup = Instance.new("TextLabel")
+popup.Size = UDim2.new(0,300,0,50)
+popup.Position = UDim2.new(0.5,-150,0.1,0)
+popup.BackgroundTransparency = 0.3
+popup.BackgroundColor3 = Color3.new(0,0,0)
+popup.TextColor3 = Color3.new(1,1,1)
+popup.TextScaled = true
+popup.Visible = false
+popup.Parent = lp.PlayerGui
 
-			if hrp and not blocked then
-				local closestHandle = nil
-				local closestDist = 15
-
-				for _, tool in ipairs(Items:GetChildren()) do
-					if tool:IsA("Tool") then
-						local handle = tool:FindFirstChild("Handle")
-
-						if handle then
-							local distance = (handle.Position - hrp.Position).Magnitude
-
-							if distance < closestDist then
-								closestDist = distance
-								closestHandle = handle
-							end
-						end
-					end
-				end
-
-				if closestHandle and GetItemsEnabled then
-					task.wait(0.2)
-
-					-- Check the toggle AGAIN after waiting
-					if GetItemsEnabled then
-						pickup(closestHandle)
-					end
-				end
-			end
-		end
-
-		task.wait(0.1)
-	end
-end)
-
-local head=char:WaitForChild("Head")
-local blocked=false
-
-head:GetPropertyChangedSignal("Transparency"):Connect(function()
-	if head.Transparency==1 then
-		GetItemsEnabled = false
-		blocked=true
-		task.delay(10.3,function()
-			blocked=false
-		end)
-	end
-end)
-
-local function pickup(handle)
-	if blocked then return end
-	local id=handle:GetAttribute("ItemId")
-	if not id then return end
-	ItemRemote:FireServer(id)
-	local gui=handle:FindFirstChild("ItemGui")
-	if gui then gui.Enabled=false end
-end
-
-task.spawn(function()
-	while true do
-		local closestHandle=nil
-		local closestDist=15
-		for _,tool in ipairs(Items:GetChildren()) do
-			if tool:IsA("Tool") then
-				local handle=tool:FindFirstChild("Handle")
-				if handle then
-					local d=(handle.Position-hrp.Position).Magnitude
-					if d<closestDist then
-						closestDist=d
-						closestHandle=handle
-					end
-				end
-			end
-		end
-		if closestHandle then
-			task.wait(0.2)
-			pickup(closestHandle)
-		end
-		task.wait(0.1)
-	end
-end)
-
-local lastPicked=nil
-
-local popup=Instance.new("TextLabel")
-popup.Size=UDim2.new(0,300,0,50)
-popup.Position=UDim2.new(0.5,-150,0.1,0)
-popup.BackgroundTransparency=0.3
-popup.BackgroundColor3=Color3.new(0,0,0)
-popup.TextColor3=Color3.new(1,1,1)
-popup.TextScaled=true
-popup.Visible=false
-popup.Parent=lp.PlayerGui
+local popupToken = 0
 
 local function ShowPopup(msg)
-	popup.Text=msg
-	popup.Visible=true
+	popupToken += 1
+
+	local token = popupToken
+
+	popup.Text = msg
+	popup.Visible = true
+
 	task.delay(1.2,function()
-		popup.Visible=false
+		if popupToken == token then
+			popup.Visible = false
+		end
 	end)
 end
 
+local function TPToToolWithoutPickup(tool)
+	if not tool or not tool.Parent then
+		return
+	end
+
+	local currentChar = lp.Character
+	local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+	local handle = tool:FindFirstChild("Handle")
+
+	if not hrp or not handle then
+		return
+	end
+
+	local toolPos = handle.Position
+
+	local sideDirs = {
+		Vector3.new(3,0,0),
+		Vector3.new(-3,0,0),
+		Vector3.new(0,0,3),
+		Vector3.new(0,0,-3)
+	}
+
+	local chosenSide
+
+	for _,dir in ipairs(sideDirs) do
+		local ray = workspace:Raycast(toolPos,dir,RayParams)
+
+		if not ray then
+			chosenSide = dir
+			break
+		end
+	end
+
+	if chosenSide then
+		hrp.CFrame = CFrame.new(toolPos + chosenSide,toolPos)
+	else
+		local sidePos = toolPos + Camera.CFrame.RightVector * 4
+		hrp.CFrame = CFrame.new(sidePos,toolPos)
+	end
+end
+
+local function StartRecovery()
+	if recoveryRunning then
+		return
+	end
+
+	recoveryRunning = true
+	blocked = true
+
+	pcall(function()
+		BusJumping:FireServer()
+	end)
+
+	task.wait(0.15)
+
+	local tool = FindAllowedTool(1000)
+
+	if tool then
+		TPToToolWithoutPickup(tool)
+	end
+
+	task.wait(10)
+
+	blocked = false
+	recoveryRunning = false
+	lastPicked = nil
+end
+
+local function MonitorCharacter(c)
+	char = c
+
+	local leg = GetRightLeg(c)
+
+	if not leg then
+		return
+	end
+
+	local wasVisible = leg.Transparency < 1
+
+	leg:GetPropertyChangedSignal("Transparency"):Connect(function()
+		local visible = leg.Transparency < 1
+
+		if wasVisible and not visible then
+			task.spawn(StartRecovery)
+		end
+
+		wasVisible = visible
+	end)
+end
+
+MonitorCharacter(char)
+
+lp.CharacterAdded:Connect(function(c)
+	task.wait(0.2)
+	MonitorCharacter(c)
+end)
+
 local function TPWaitLookPickup(tool)
-	local hrp=Char:FindFirstChild("HumanoidRootPart")
-	local handle=tool:FindFirstChild("Handle")
-	if not hrp or not handle then return end
-	if lastPicked==tool then return end
-	lastPicked=tool
-	local toolPos=handle.Position
-	local sideDirs={
+	if not tool or not tool.Parent then
+		return false
+	end
+
+	if lastPicked == tool then
+		return false
+	end
+
+	if not GetItemsEnabled or blocked or recoveryRunning then
+		return false
+	end
+
+	if not CountdownAllowed() then
+		return false
+	end
+
+	local currentChar = lp.Character
+	local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+	local handle = tool:FindFirstChild("Handle")
+
+	if not hrp or not handle then
+		return false
+	end
+
+	lastPicked = tool
+
+	local toolPos = handle.Position
+
+	local sideDirs = {
 		Vector3.new(2,0,0),
 		Vector3.new(-2,0,0),
 		Vector3.new(0,0,2),
 		Vector3.new(0,0,-2)
 	}
-	local chosenSide=nil
+
+	local chosenSide
+
 	for _,dir in ipairs(sideDirs) do
-		local ray=workspace:Raycast(toolPos,dir,RayParams)
+		local ray = workspace:Raycast(toolPos,dir,RayParams)
+
 		if not ray then
-			chosenSide=dir
+			chosenSide = dir
 			break
 		end
 	end
-	if chosenSide then
-		local sidePos=toolPos+chosenSide
-		hrp.CFrame=CFrame.new(sidePos,toolPos)
-	else
-		local fallbackSide=Camera.CFrame.RightVector*4
-		local sidePos=toolPos+fallbackSide
-		hrp.CFrame=CFrame.new(sidePos,toolPos)
-	end
-	local antiFall=Instance.new("Part")
-	antiFall.Size=Vector3.new(6,1,6)
-	antiFall.Anchored=true
-	antiFall.CanCollide=true
-	antiFall.Transparency=1
-	antiFall.Position=hrp.Position-Vector3.new(0,2,0)
-	antiFall.Parent=workspace
-	task.delay(1,function()
-		if antiFall then antiFall:Destroy() end
-	end)
-	task.wait(0.25)
-	hrp.CFrame=CFrame.new(hrp.Position,toolPos)
-	local id=handle:GetAttribute("ItemId")
-	if id then
-		ItemRemote:FireServer(id)
-		local gui=handle:FindFirstChild("ItemGui")
-		if gui then gui.Enabled=false end
-	end
-	task.wait(0.25)
-end
 
-Players.LocalPlayer.CharacterAdded:Connect(function()
-	BombPickedThisRound = false
-end)
+	if chosenSide then
+		local sidePos = toolPos + chosenSide
+		hrp.CFrame = CFrame.new(sidePos,toolPos)
+	else
+		local fallbackSide = Camera.CFrame.RightVector * 4
+		local sidePos = toolPos + fallbackSide
+		hrp.CFrame = CFrame.new(sidePos,toolPos)
+	end
+
+	local antiFall = Instance.new("Part")
+	antiFall.Size = Vector3.new(6,1,6)
+	antiFall.Anchored = true
+	antiFall.CanCollide = true
+	antiFall.Transparency = 1
+	antiFall.Position = hrp.Position - Vector3.new(0,2,0)
+	antiFall.Parent = workspace
+
+	task.delay(1,function()
+		if antiFall and antiFall.Parent then
+			antiFall:Destroy()
+		end
+	end)
+
+	task.wait(0.25)
+
+	if blocked or recoveryRunning then
+		return false
+	end
+
+	if not GetItemsEnabled then
+		return false
+	end
+
+	if not CountdownAllowed() then
+		return false
+	end
+
+	if not handle or not handle.Parent then
+		return false
+	end
+
+	hrp.CFrame = CFrame.new(hrp.Position,toolPos)
+
+	local success = Pickup(handle)
+
+	task.wait(0.25)
+
+	return success
+end
 
 task.spawn(function()
 	while true do
-		local timeLeftObj =
-			lp.PlayerGui:FindFirstChild("Countdown")
-			and lp.PlayerGui.Countdown:FindFirstChild("Countdown")
-			and lp.PlayerGui.Countdown.Countdown:FindFirstChild("TimeLeft")
+		if GetItemsEnabled
+			and not blocked
+			and not recoveryRunning
+			and CountdownAllowed() then
 
-		local allowed = false
+			local tool = FindAllowedTool(15)
 
-		if timeLeftObj then
-			local t = timeLeftObj.Text
-			if t == "1" or t == "2" or t == "3" then
-				task.wait(0.1)
-				if timeLeftObj.Text == t then
-					allowed = true
+			if tool then
+				task.wait(0.2)
+
+				if GetItemsEnabled
+					and not blocked
+					and not recoveryRunning
+					and CountdownAllowed()
+					and tool.Parent then
+
+					TPWaitLookPickup(tool)
 				end
 			end
 		end
 
+		task.wait(0.1)
+	end
+end)
+
+Players.LocalPlayer.CharacterAdded:Connect(function()
+	BombPickedThisRound = false
+	lastPicked = nil
+	blocked = false
+	recoveryRunning = false
+end)
+
+task.spawn(function()
+	while true do
+		local timeLeftObj = GetCountdownObject()
+		local allowed = CountdownAllowed()
+
 		if not allowed then
 			ShowPopup("Countdown too high — TP blocked")
-			task.wait(0.05)
 		else
 			ShowPopup("Countdown is 3 or less — TP allowed")
 		end
 
 		if timeLeftObj and timeLeftObj.Text == "1" then
 			task.wait(1.2)
+
 			if ILEnabled then
 				InstantLand()
 			end
 		end
 
-		if GetItemsEnabled and allowed then
-			if head.Transparency == 1 then
-				task.wait(0.1)
-			else
-				local hrp = Char:FindFirstChild("HumanoidRootPart")
-				if hrp then
-					local bomb = nil
-					local strengthList = {}
-					local bullList = {}
-					local bobaList = {}
-					local speedList = {}
-					local frogList = {}
+		if GetItemsEnabled
+			and allowed
+			and not blocked
+			and not recoveryRunning then
 
-					for _,obj in ipairs(workspace:GetDescendants()) do
-						if obj:IsA("Tool") then
-							local handle = obj:FindFirstChild("Handle")
-							if handle then
-								if obj.Name == "Bomb" and not BombPickedThisRound and not bomb then
-									bomb = obj
-								elseif obj.Name == "Potion of Strength" then
-									table.insert(strengthList, obj)
-								elseif obj.Name == "Bull's essence" then
-									table.insert(bullList, obj)
-								elseif obj.Name == "Boba" then
-									table.insert(bobaList, obj)
-								elseif obj.Name == "Speed Potion" then
-									table.insert(speedList, obj)
-								elseif obj.Name == "Frog Potion" then
-									table.insert(frogList, obj)
-								end
+			local currentChar = lp.Character
+			local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+
+			if hrp then
+				local bomb = nil
+				local strengthList = {}
+				local bullList = {}
+				local bobaList = {}
+				local speedList = {}
+				local frogList = {}
+
+				for _,obj in ipairs(Items:GetChildren()) do
+					if obj:IsA("Tool") then
+						local handle = obj:FindFirstChild("Handle")
+
+						if handle then
+							if obj.Name == "Bomb" and not BombPickedThisRound and not bomb then
+								bomb = obj
+							elseif obj.Name == "Potion of Strength" then
+								table.insert(strengthList,obj)
+							elseif obj.Name == "Bull's essence" then
+								table.insert(bullList,obj)
+							elseif obj.Name == "Boba" then
+								table.insert(bobaList,obj)
+							elseif obj.Name == "Speed Potion" then
+								table.insert(speedList,obj)
+							elseif obj.Name == "Frog Potion" then
+								table.insert(frogList,obj)
 							end
 						end
 					end
+				end
 
-					local order = {
-						{bomb},
-						strengthList,
-						bullList,
-						bobaList,
-						speedList,
-						frogList
-					}
+				local order = {
+					{bomb},
+					strengthList,
+					bullList,
+					bobaList,
+					speedList,
+					frogList
+				}
 
-					local picked = 0
+				local picked = 0
 
-					for _,group in ipairs(order) do
-						for _,tool in ipairs(group) do
-							if tool then
-								TPWaitLookPickup(tool)
-								picked = picked + 1
+				for _,group in ipairs(order) do
+					for _,tool in ipairs(group) do
+						if tool
+							and GetItemsEnabled
+							and not blocked
+							and not recoveryRunning
+							and CountdownAllowed() then
+
+							local success = TPWaitLookPickup(tool)
+
+							if success then
+								picked += 1
+
 								if tool.Name == "Bomb" then
 									BombPickedThisRound = true
 								end
-								if picked >= 4 then
-									task.wait(0)
-									break
-								end
 							end
-						end
-						if picked >= 4 then
-							break
+
+							if picked >= 4 then
+								break
+							end
 						end
 					end
 
+					if picked >= 4 then
+						break
+					end
+				end
+
+				if picked > 0 then
 					task.wait(5)
 				end
 			end
@@ -1271,5 +1426,3 @@ task.spawn(function()
 		task.wait(0.1)
 	end
 end)
-
-
