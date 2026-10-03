@@ -1970,3 +1970,349 @@ task.spawn(function()
 		task.wait(0.1)
 	end
 end)
+
+--==================================================
+-- GET ALL ITEMS
+--==================================================
+
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local GetAllItemsEnabled = false
+local GetAllItemsRunning = false
+local GetAllItemsNoclipConnection
+
+--==================================================
+-- NOCLIP
+--==================================================
+
+local function SetGetAllItemsNoclip(enabled)
+
+	if GetAllItemsNoclipConnection then
+		GetAllItemsNoclipConnection:Disconnect()
+		GetAllItemsNoclipConnection = nil
+	end
+
+	if not enabled then
+
+		local currentChar = lp.Character
+
+		if currentChar then
+			for _, obj in ipairs(currentChar:GetDescendants()) do
+				if obj:IsA("BasePart") then
+					obj.CanCollide = true
+				end
+			end
+		end
+
+		return
+	end
+
+	GetAllItemsNoclipConnection =
+		RunService.Stepped:Connect(function()
+
+			if not GetAllItemsEnabled then
+				return
+			end
+
+			local currentChar = lp.Character
+
+			if not currentChar then
+				return
+			end
+
+			for _, obj in ipairs(currentChar:GetDescendants()) do
+				if obj:IsA("BasePart") then
+					obj.CanCollide = false
+				end
+			end
+		end)
+end
+
+--==================================================
+-- FIND CLOSEST TOOL
+-- ALL TOOLS IN workspace.Items
+--==================================================
+
+local function FindClosestGetAllTool()
+
+	local currentChar = lp.Character
+
+	local hrp =
+		currentChar
+		and currentChar:FindFirstChild("HumanoidRootPart")
+
+	if not hrp then
+		return nil
+	end
+
+	local closest = nil
+	local closestDistance = math.huge
+
+	for _, tool in ipairs(Items:GetChildren()) do
+
+		-- Accept EVERY Tool in workspace.Items.
+		if tool:IsA("Tool") then
+
+			local handle =
+				tool:FindFirstChild("Handle")
+
+			if handle
+				and handle:IsA("BasePart")
+				and handle.Parent then
+
+				local distance =
+					(handle.Position - hrp.Position).Magnitude
+
+				if distance < closestDistance then
+
+					closestDistance = distance
+					closest = tool
+
+				end
+			end
+		end
+	end
+
+	return closest
+end
+
+--==================================================
+-- TWEEN TO TOOL
+--==================================================
+
+local function TweenToGetAllTool(tool)
+
+	if not tool or not tool.Parent then
+		return false
+	end
+
+	local currentChar = lp.Character
+
+	local hrp =
+		currentChar
+		and currentChar:FindFirstChild("HumanoidRootPart")
+
+	local handle =
+		tool:FindFirstChild("Handle")
+
+	if not hrp or not handle then
+		return false
+	end
+
+	local targetPosition =
+		handle.Position + Vector3.new(2, 0, 0)
+
+	local targetCFrame =
+		CFrame.new(
+			targetPosition,
+			handle.Position
+		)
+
+	local tweenInfo =
+		TweenInfo.new(
+			0.1,
+			Enum.EasingStyle.Linear,
+			Enum.EasingDirection.Out
+		)
+
+	local tween =
+		TweenService:Create(
+			hrp,
+			tweenInfo,
+			{
+				CFrame = targetCFrame
+			}
+		)
+
+	local finished = false
+
+	local connection =
+		tween.Completed:Connect(function()
+			finished = true
+		end)
+
+	tween:Play()
+
+	while not finished do
+
+		if not GetAllItemsEnabled then
+
+			tween:Cancel()
+
+			if connection then
+				connection:Disconnect()
+			end
+
+			return false
+		end
+
+		if not tool.Parent then
+
+			tween:Cancel()
+
+			if connection then
+				connection:Disconnect()
+			end
+
+			return false
+		end
+
+		task.wait()
+	end
+
+	if connection then
+		connection:Disconnect()
+	end
+
+	return true
+end
+
+--==================================================
+-- PICK UP TOOL
+--==================================================
+
+local function GetAllPickup(tool)
+
+	if not GetAllItemsEnabled then
+		return false
+	end
+
+	if not tool or not tool.Parent then
+		return false
+	end
+
+	local handle =
+		tool:FindFirstChild("Handle")
+
+	if not handle then
+		return false
+	end
+
+	local id =
+		handle:GetAttribute("ItemId")
+
+	if not id then
+		return false
+	end
+
+	ItemRemote:FireServer(id)
+
+	local gui =
+		handle:FindFirstChild("ItemGui")
+
+	if gui then
+		gui.Enabled = false
+	end
+
+	return true
+end
+
+--==================================================
+-- GET ALL ITEMS LOOP
+--==================================================
+
+local function StartGetAllItems()
+
+	if GetAllItemsRunning then
+		return
+	end
+
+	GetAllItemsRunning = true
+
+	while GetAllItemsEnabled do
+
+		-- Use the same countdown requirement.
+		if CountdownAllowed() then
+
+			-- Always get the closest remaining Tool.
+			local tool =
+				FindClosestGetAllTool()
+
+			if tool then
+
+				-- Tween to tool for 0.4 seconds.
+				local arrived =
+					TweenToGetAllTool(tool)
+
+				if arrived
+					and GetAllItemsEnabled
+					and tool.Parent then
+
+					-- Wait 0.2 seconds after arriving.
+					task.wait(0.4)
+
+					if GetAllItemsEnabled
+						and tool.Parent then
+
+						-- Pick it up.
+						GetAllPickup(tool)
+
+						-- Wait 2 seconds before
+						-- going to the next tool.
+						task.wait(2)
+					end
+
+				else
+					task.wait(0.1)
+				end
+
+			else
+
+				-- No tools currently available.
+				task.wait(0.1)
+
+			end
+
+		else
+
+			-- Wait for the countdown.
+			task.wait(0.1)
+
+		end
+	end
+
+	GetAllItemsRunning = false
+end
+
+--==================================================
+-- TOGGLE
+--==================================================
+
+ItemsTab:CreateToggle({
+	Name = "Get all items",
+	CurrentValue = false,
+
+	Callback = function(v)
+
+		GetAllItemsEnabled = v
+
+		if v then
+
+			SetGetAllItemsNoclip(true)
+
+			if not GetAllItemsRunning then
+				task.spawn(StartGetAllItems)
+			end
+
+		else
+
+			GetAllItemsEnabled = false
+
+			SetGetAllItemsNoclip(false)
+		end
+	end
+})
+
+--==================================================
+-- CHARACTER RESPAWN
+--==================================================
+
+lp.CharacterAdded:Connect(function()
+
+	task.wait(0.2)
+
+	if GetAllItemsEnabled then
+		SetGetAllItemsNoclip(true)
+	end
+end)
