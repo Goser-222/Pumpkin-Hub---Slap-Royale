@@ -324,10 +324,16 @@ end)
 local Rayfield=loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window=Rayfield:CreateWindow({
-	Name="Pumpkin Hub",
+	Name="Pumpkin Hub [EARLY RELEASE]",
 	LoadingTitle="Pumpkin Hub",
-	LoadingSubtitle="Rayfield Edition",
+	LoadingSubtitle="Slap Royale",
 	ConfigurationSaving={Enabled=false}
+})
+
+Rayfield:Notify({
+	Title = "IMPORTANT!",
+	Content = "USING THIS SCRIPT CAN RESULT IN A PERMANENT BAN USE ON OWN RISK",
+	Duration = 5,
 })
 
 local CombatTab=Window:CreateTab("Combat",4483345998)
@@ -448,58 +454,13 @@ ItemsTab:CreateToggle({
 local AutoBombBusEnabled=false
 
 ItemsTab:CreateToggle({
-	Name="Auto Bomb Bus (Currently not working)",
+	Name="Auto Bomb Bus",
 	CurrentValue=false,
 	Callback=function(v)
 		AutoBombBusEnabled=v
 	end
 })
 
-local WaitForBombBusEnabled = false
-local WaitForBombBusRunning = false
-
-ItemsTab:CreateToggle({
-	Name = "Wait for Bomb Bus (Currently not working)",
-	CurrentValue = false,
-	Callback = function(v)
-		WaitForBombBusEnabled = v
-	end
-})
-
-task.spawn(function()
-	while true do
-		if WaitForBombBusEnabled
-			and not WaitForBombBusRunning then
-
-			local timeLeftObj = GetCountdownObject()
-
-			if timeLeftObj and timeLeftObj.Text == "1" then
-				WaitForBombBusRunning = true
-
-				-- Wait 0.5 seconds after countdown reaches 1
-				task.wait(0.5)
-
-				if WaitForBombBusEnabled then
-					-- Disable Get Items
-					local wasEnabled = GetItemsEnabled
-					GetItemsEnabled = false
-
-					-- Keep Get Items disabled for 13 seconds
-					task.wait(13)
-
-					-- Only restore if the toggle is still enabled
-					if WaitForBombBusEnabled and wasEnabled then
-						GetItemsEnabled = true
-					end
-				end
-
-				WaitForBombBusRunning = false
-			end
-		end
-
-		task.wait(0.05)
-	end
-end)
 
 ESPTab:CreateToggle({
 	Name="Player ESP",
@@ -823,6 +784,10 @@ task.spawn(function()
 	end
 end)
 
+--==================================================
+-- GET ITEMS
+--==================================================
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -833,9 +798,30 @@ local Items = workspace:WaitForChild("Items")
 local ItemRemote = ReplicatedStorage.Remotes.Item
 local BusJumping = ReplicatedStorage.Remotes.BusJumping
 
+--==================================================
+-- STATE
+--==================================================
+
 local blocked = false
 local recoveryRunning = false
 local lastPicked = nil
+
+local BombPickedThisRound = false
+local BombTeleportedThisRound = false
+
+local ContinueAfterBusEnabled = false
+local ContinueAfterBusRunning = false
+
+local CollectionRunning = false
+local CollectionCooldown = false
+
+-- First collection = 4
+-- Every collection after = 7
+local CollectionCycle = 0
+
+--==================================================
+-- ALLOWED ITEMS
+--==================================================
 
 local AllowedTools = {
 	["Bomb"] = true,
@@ -846,40 +832,87 @@ local AllowedTools = {
 	["Frog Potion"] = true
 }
 
-local function updateCharacter(c)
+--==================================================
+-- CHARACTER
+--==================================================
+
+local function UpdateCharacter(c)
 	char = c
+
 	blocked = false
 	recoveryRunning = false
 	lastPicked = nil
+
+	BombPickedThisRound = false
+	BombTeleportedThisRound = false
+
+	CollectionRunning = false
+	CollectionCooldown = false
+	ContinueAfterBusRunning = false
+
+	CollectionCycle = 0
 end
 
-lp.CharacterAdded:Connect(updateCharacter)
+lp.CharacterAdded:Connect(UpdateCharacter)
+
+--==================================================
+-- COUNTDOWN
+--==================================================
+
+local function GetCountdownObject()
+	local countdown = lp.PlayerGui:FindFirstChild("Countdown")
+	local container = countdown and countdown:FindFirstChild("Countdown")
+
+	return container and container:FindFirstChild("TimeLeft")
+end
+
+local function GetCountdown()
+	local obj = GetCountdownObject()
+
+	if not obj then
+		return nil
+	end
+
+	return tonumber(obj.Text)
+end
+
+local function CountdownAllowed()
+	local value = GetCountdown()
+
+	return value ~= nil
+		and value >= 1
+		and value <= 3
+end
+
+--==================================================
+-- BODY PARTS
+--==================================================
 
 local function GetRightLeg(c)
+	if not c then
+		return nil
+	end
+
 	return c:FindFirstChild("RightUpperLeg")
 		or c:FindFirstChild("RightLowerLeg")
 		or c:FindFirstChild("RightFoot")
 		or c:FindFirstChild("Right Leg")
 end
 
-local function GetCountdownObject()
-	local countdown = lp.PlayerGui:FindFirstChild("Countdown")
-	local container = countdown and countdown:FindFirstChild("Countdown")
-	return container and container:FindFirstChild("TimeLeft")
-end
+local function GetTorso(c)
+	c = c or lp.Character
 
-local function GetCountdown()
-	local obj = GetCountdownObject()
-	if not obj then
+	if not c then
 		return nil
 	end
-	return tonumber(obj.Text)
+
+	return c:FindFirstChild("UpperTorso")
+		or c:FindFirstChild("Torso")
 end
 
-local function CountdownAllowed()
-	local value = GetCountdown()
-	return value ~= nil and value >= 1 and value <= 3
-end
+--==================================================
+-- FIND ALLOWED TOOL
+--==================================================
 
 local function FindAllowedTool(maxDistance)
 	local currentChar = lp.Character
@@ -893,11 +926,16 @@ local function FindAllowedTool(maxDistance)
 	local closestDistance = maxDistance or math.huge
 
 	for _, tool in ipairs(Items:GetChildren()) do
-		if tool:IsA("Tool") and AllowedTools[tool.Name] then
+
+		if tool:IsA("Tool")
+			and AllowedTools[tool.Name] then
+
 			local handle = tool:FindFirstChild("Handle")
 
 			if handle then
-				local distance = (handle.Position - hrp.Position).Magnitude
+
+				local distance =
+					(handle.Position - hrp.Position).Magnitude
 
 				if distance < closestDistance then
 					closestDistance = distance
@@ -910,12 +948,17 @@ local function FindAllowedTool(maxDistance)
 	return closest
 end
 
+--==================================================
+-- PICKUP
+--==================================================
+
 local function Pickup(handle)
+
 	if not GetItemsEnabled then
 		return false
 	end
 
-	if blocked then
+	if blocked or recoveryRunning then
 		return false
 	end
 
@@ -944,59 +987,46 @@ local function Pickup(handle)
 	return true
 end
 
-local popup = Instance.new("TextLabel")
-popup.Size = UDim2.new(0,300,0,50)
-popup.Position = UDim2.new(0.5,-150,0.1,0)
-popup.BackgroundTransparency = 0.3
-popup.BackgroundColor3 = Color3.new(0,0,0)
-popup.TextColor3 = Color3.new(1,1,1)
-popup.TextScaled = true
-popup.Visible = false
-popup.Parent = lp.PlayerGui
-
-local popupToken = 0
-
-local function ShowPopup(msg)
-	popupToken += 1
-
-	local token = popupToken
-
-	popup.Text = msg
-	popup.Visible = true
-
-	task.delay(1.2,function()
-		if popupToken == token then
-			popup.Visible = false
-		end
-	end)
-end
+--==================================================
+-- TELEPORT TO TOOL WITHOUT PICKUP
+--==================================================
 
 local function TPToToolWithoutPickup(tool)
+
 	if not tool or not tool.Parent then
-		return
+		return false
 	end
 
 	local currentChar = lp.Character
-	local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+
+	local hrp =
+		currentChar
+		and currentChar:FindFirstChild("HumanoidRootPart")
+
 	local handle = tool:FindFirstChild("Handle")
 
 	if not hrp or not handle then
-		return
+		return false
 	end
 
 	local toolPos = handle.Position
 
 	local sideDirs = {
-		Vector3.new(3,0,0),
-		Vector3.new(-3,0,0),
-		Vector3.new(0,0,3),
-		Vector3.new(0,0,-3)
+		Vector3.new(3, 0, 0),
+		Vector3.new(-3, 0, 0),
+		Vector3.new(0, 0, 3),
+		Vector3.new(0, 0, -3)
 	}
 
-	local chosenSide
+	local chosenSide = nil
 
-	for _,dir in ipairs(sideDirs) do
-		local ray = workspace:Raycast(toolPos,dir,RayParams)
+	for _, dir in ipairs(sideDirs) do
+
+		local ray = workspace:Raycast(
+			toolPos,
+			dir,
+			RayParams
+		)
 
 		if not ray then
 			chosenSide = dir
@@ -1005,70 +1035,40 @@ local function TPToToolWithoutPickup(tool)
 	end
 
 	if chosenSide then
-		hrp.CFrame = CFrame.new(toolPos + chosenSide,toolPos)
+
+		hrp.CFrame = CFrame.new(
+			toolPos + chosenSide,
+			toolPos
+		)
+
 	else
-		local sidePos = toolPos + Camera.CFrame.RightVector * 4
-		hrp.CFrame = CFrame.new(sidePos,toolPos)
-	end
-end
 
-local function StartRecovery()
-	if recoveryRunning then
-		return
-	end
+		local rightVector
 
-	recoveryRunning = true
-	blocked = true
-
-	pcall(function()
-		BusJumping:FireServer()
-	end)
-
-	task.wait(0.15)
-
-	local tool = FindAllowedTool(1000)
-
-	if tool then
-		TPToToolWithoutPickup(tool)
-	end
-
-	task.wait(10)
-
-	blocked = false
-	recoveryRunning = false
-	lastPicked = nil
-end
-
-local function MonitorCharacter(c)
-	char = c
-
-	local leg = GetRightLeg(c)
-
-	if not leg then
-		return
-	end
-
-	local wasVisible = leg.Transparency < 1
-
-	leg:GetPropertyChangedSignal("Transparency"):Connect(function()
-		local visible = leg.Transparency < 1
-
-		if wasVisible and not visible then
-			task.spawn(StartRecovery)
+		if Camera then
+			rightVector = Camera.CFrame.RightVector
+		else
+			rightVector = Vector3.new(1, 0, 0)
 		end
 
-		wasVisible = visible
-	end)
+		local sidePos =
+			toolPos + rightVector * 4
+
+		hrp.CFrame = CFrame.new(
+			sidePos,
+			toolPos
+		)
+	end
+
+	return true
 end
 
-MonitorCharacter(char)
-
-lp.CharacterAdded:Connect(function(c)
-	task.wait(0.2)
-	MonitorCharacter(c)
-end)
+--==================================================
+-- TELEPORT + PICKUP
+--==================================================
 
 local function TPWaitLookPickup(tool)
+
 	if not tool or not tool.Parent then
 		return false
 	end
@@ -1077,7 +1077,11 @@ local function TPWaitLookPickup(tool)
 		return false
 	end
 
-	if not GetItemsEnabled or blocked or recoveryRunning then
+	if not GetItemsEnabled then
+		return false
+	end
+
+	if blocked or recoveryRunning then
 		return false
 	end
 
@@ -1086,7 +1090,11 @@ local function TPWaitLookPickup(tool)
 	end
 
 	local currentChar = lp.Character
-	local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+
+	local hrp =
+		currentChar
+		and currentChar:FindFirstChild("HumanoidRootPart")
+
 	local handle = tool:FindFirstChild("Handle")
 
 	if not hrp or not handle then
@@ -1098,16 +1106,21 @@ local function TPWaitLookPickup(tool)
 	local toolPos = handle.Position
 
 	local sideDirs = {
-		Vector3.new(2,0,0),
-		Vector3.new(-2,0,0),
-		Vector3.new(0,0,2),
-		Vector3.new(0,0,-2)
+		Vector3.new(2, 0, 0),
+		Vector3.new(-2, 0, 0),
+		Vector3.new(0, 0, 2),
+		Vector3.new(0, 0, -2)
 	}
 
-	local chosenSide
+	local chosenSide = nil
 
-	for _,dir in ipairs(sideDirs) do
-		local ray = workspace:Raycast(toolPos,dir,RayParams)
+	for _, dir in ipairs(sideDirs) do
+
+		local ray = workspace:Raycast(
+			toolPos,
+			dir,
+			RayParams
+		)
 
 		if not ray then
 			chosenSide = dir
@@ -1116,35 +1129,38 @@ local function TPWaitLookPickup(tool)
 	end
 
 	if chosenSide then
-		local sidePos = toolPos + chosenSide
-		hrp.CFrame = CFrame.new(sidePos,toolPos)
+
+		hrp.CFrame = CFrame.new(
+			toolPos + chosenSide,
+			toolPos
+		)
+
 	else
-		local fallbackSide = Camera.CFrame.RightVector * 4
-		local sidePos = toolPos + fallbackSide
-		hrp.CFrame = CFrame.new(sidePos,toolPos)
-	end
 
-	local antiFall = Instance.new("Part")
-	antiFall.Size = Vector3.new(6,1,6)
-	antiFall.Anchored = true
-	antiFall.CanCollide = true
-	antiFall.Transparency = 1
-	antiFall.Position = hrp.Position - Vector3.new(0,2,0)
-	antiFall.Parent = workspace
+		local rightVector
 
-	task.delay(1,function()
-		if antiFall and antiFall.Parent then
-			antiFall:Destroy()
+		if Camera then
+			rightVector = Camera.CFrame.RightVector
+		else
+			rightVector = Vector3.new(1, 0, 0)
 		end
-	end)
+
+		local sidePos =
+			toolPos + rightVector * 4
+
+		hrp.CFrame = CFrame.new(
+			sidePos,
+			toolPos
+		)
+	end
 
 	task.wait(0.25)
 
-	if blocked or recoveryRunning then
+	if not GetItemsEnabled then
 		return false
 	end
 
-	if not GetItemsEnabled then
+	if blocked or recoveryRunning then
 		return false
 	end
 
@@ -1156,7 +1172,10 @@ local function TPWaitLookPickup(tool)
 		return false
 	end
 
-	hrp.CFrame = CFrame.new(hrp.Position,toolPos)
+	hrp.CFrame = CFrame.new(
+		hrp.Position,
+		toolPos
+	)
 
 	local success = Pickup(handle)
 
@@ -1165,26 +1184,555 @@ local function TPWaitLookPickup(tool)
 	return success
 end
 
+--==================================================
+-- GET ITEMS IN ORDER
+--==================================================
+
+local function GetOrderedItems()
+
+	local bomb = nil
+
+	local strengthList = {}
+	local bullList = {}
+	local bobaList = {}
+	local speedList = {}
+	local frogList = {}
+
+	for _, obj in ipairs(Items:GetChildren()) do
+
+		if obj:IsA("Tool") then
+
+			local handle = obj:FindFirstChild("Handle")
+
+			if handle then
+
+				if obj.Name == "Bomb"
+					and not BombPickedThisRound
+					and not BombTeleportedThisRound
+					and not bomb then
+
+					bomb = obj
+
+				elseif obj.Name == "Potion of Strength" then
+
+					table.insert(
+						strengthList,
+						obj
+					)
+
+				elseif obj.Name == "Bull's essence" then
+
+					table.insert(
+						bullList,
+						obj
+					)
+
+				elseif obj.Name == "Boba" then
+
+					table.insert(
+						bobaList,
+						obj
+					)
+
+				elseif obj.Name == "Speed Potion" then
+
+					table.insert(
+						speedList,
+						obj
+					)
+
+				elseif obj.Name == "Frog Potion" then
+
+					table.insert(
+						frogList,
+						obj
+					)
+				end
+			end
+		end
+	end
+
+	return {
+		{bomb},
+		strengthList,
+		bullList,
+		bobaList,
+		speedList,
+		frogList
+	}
+end
+
+--==================================================
+-- COLLECT EXACT NUMBER
+--==================================================
+
+local function CollectItems(amount)
+
+	if CollectionRunning then
+		return 0
+	end
+
+	if not GetItemsEnabled then
+		return 0
+	end
+
+	if blocked or recoveryRunning then
+		return 0
+	end
+
+	if not CountdownAllowed() then
+		return 0
+	end
+
+	CollectionRunning = true
+
+	local picked = 0
+
+	local order = GetOrderedItems()
+
+	for _, group in ipairs(order) do
+
+		for _, tool in ipairs(group) do
+
+			if picked >= amount then
+				break
+			end
+
+			if not GetItemsEnabled then
+				break
+			end
+
+			if blocked or recoveryRunning then
+				break
+			end
+
+			if not CountdownAllowed() then
+				break
+			end
+
+			if tool and tool.Parent then
+
+				-- Bomb may only be teleported to once.
+				if tool.Name == "Bomb"
+					and BombTeleportedThisRound then
+
+					continue
+				end
+
+				local success =
+					TPWaitLookPickup(tool)
+
+				if success then
+
+					picked += 1
+
+					if tool.Name == "Bomb" then
+
+						BombPickedThisRound = true
+						BombTeleportedThisRound = true
+					end
+				end
+			end
+		end
+
+		if picked >= amount then
+			break
+		end
+	end
+
+	CollectionRunning = false
+
+	return picked
+end
+
+--==================================================
+-- CONTINUE ITEM COLLECTION AFTER BUS
+--==================================================
+
+ItemsTab:CreateToggle({
+	Name = "Continue Item Collection after bus",
+	CurrentValue = false,
+
+	Callback = function(v)
+
+		ContinueAfterBusEnabled = v
+
+		if not v then
+
+			-- Disabled:
+			-- stay in the bus
+			-- do not jump
+			-- do not teleport after bus
+			-- do not collect after bus
+
+			GetItemsEnabled = false
+
+			ContinueAfterBusRunning = false
+			CollectionRunning = false
+			CollectionCooldown = false
+
+			lastPicked = nil
+		end
+	end
+})
+
+--==================================================
+-- START BUS COLLECTION
+--==================================================
+
+local function StartBusCollection()
+
+	if not ContinueAfterBusEnabled then
+		return
+	end
+
+	if ContinueAfterBusRunning then
+		return
+	end
+
+	ContinueAfterBusRunning = true
+
+	-- Stop normal item collection while inside bus.
+	GetItemsEnabled = false
+	CollectionRunning = false
+	CollectionCooldown = false
+	lastPicked = nil
+
+	task.wait(0.5)
+
+	-- Check toggle before jumping.
+	if not ContinueAfterBusEnabled then
+
+		GetItemsEnabled = false
+		ContinueAfterBusRunning = false
+
+		return
+	end
+
+	--==================================================
+	-- JUMP OUT, THEN TELEPORT TO TOOL
+	--==================================================
+
+	if ContinueAfterBusEnabled then
+
+		-- Jump out first
+		pcall(function()
+			BusJumping:FireServer()
+		end)
+
+		-- Wait 0.1 seconds after jumping
+		task.wait(0.1)
+
+		if not ContinueAfterBusEnabled then
+			return
+		end
+
+		-- Look for a tool after the jump.
+		-- Retry briefly in case the items have not loaded yet.
+		local tool = nil
+
+		for i = 1, 20 do
+
+			if not ContinueAfterBusEnabled then
+				break
+			end
+
+			tool = FindAllowedTool(1000)
+
+			if tool and tool.Parent then
+				break
+			end
+
+			task.wait(0.05)
+		end
+
+		-- Teleport after the tool is found
+		if ContinueAfterBusEnabled and tool and tool.Parent then
+			TPToToolWithoutPickup(tool)
+		end
+	end
+
+	--==================================================
+	-- WAIT AFTER JUMP
+	--==================================================
+
+	task.wait(0.2)
+
+	if not ContinueAfterBusEnabled then
+
+		GetItemsEnabled = false
+		ContinueAfterBusRunning = false
+
+		return
+	end
+
+	--==================================================
+	-- CONFIRM PLAYER IS OUT OF BUS
+	--==================================================
+
+	local startTime = tick()
+	local exitedBus = false
+
+	while tick() - startTime < 10 do
+
+		if not ContinueAfterBusEnabled then
+
+			GetItemsEnabled = false
+			ContinueAfterBusRunning = false
+
+			return
+		end
+
+		local currentChar = lp.Character
+		local torso = GetTorso(currentChar)
+
+		if torso and torso.Transparency < 1 then
+
+			exitedBus = true
+			break
+		end
+
+		task.wait(0.05)
+	end
+
+	if not exitedBus then
+
+		GetItemsEnabled = false
+		ContinueAfterBusRunning = false
+
+		return
+	end
+
+	--==================================================
+	-- WAIT 10 SECONDS AFTER JUMPING OUT
+	--==================================================
+
+	task.wait(10)
+
+	if not ContinueAfterBusEnabled then
+
+		GetItemsEnabled = false
+		ContinueAfterBusRunning = false
+
+		return
+	end
+
+	--==================================================
+	-- DELETE GLIDERS WHILE GET ITEMS IS ENABLED
+	--==================================================
+
+	task.spawn(function()
+		while true do
+			if GetItemsEnabled then
+				for _, obj in ipairs(workspace:GetDescendants()) do
+					if obj.Name == "Glider" then
+						pcall(function()
+							obj:Destroy()
+						end)
+					end
+				end
+			end
+
+			task.wait(0.1)
+		end
+	end)
+
+	--==================================================
+	-- NOW TELEPORT TO BOMB
+	--==================================================
+
+	GetItemsEnabled = true
+
+	if not BombTeleportedThisRound
+		and ContinueAfterBusEnabled then
+
+		local bomb = nil
+
+		for _, tool in ipairs(Items:GetChildren()) do
+
+			if tool:IsA("Tool")
+				and tool.Name == "Bomb"
+				and tool.Parent then
+
+				bomb = tool
+				break
+			end
+		end
+
+		if bomb then
+
+			TPToToolWithoutPickup(bomb)
+
+			BombTeleportedThisRound = true
+		end
+	end
+
+	--==================================================
+	-- COLLECT ITEMS
+	--==================================================
+
+	if ContinueAfterBusEnabled
+		and GetItemsEnabled then
+
+		local amount
+
+		if CollectionCycle == 0 then
+			amount = 4
+		else
+			amount = 7
+		end
+
+		local picked =
+			CollectItems(amount)
+
+		if picked > 0 then
+
+			CollectionCycle += 1
+
+			-- Always wait 5 seconds after
+			-- the collection finishes.
+			CollectionCooldown = true
+
+			task.wait(5)
+
+			CollectionCooldown = false
+		end
+	end
+
+	ContinueAfterBusRunning = false
+end
+
+--==================================================
+-- BUS LEG MONITOR
+--==================================================
+
+local function SetupBusMonitor(c)
+
+	local leg = GetRightLeg(c)
+
+	if not leg then
+		return
+	end
+
+	local previousTransparency =
+		leg.Transparency
+
+	leg:GetPropertyChangedSignal(
+		"Transparency"
+	):Connect(function()
+
+		local currentTransparency =
+			leg.Transparency
+
+		local becameInvisible =
+			previousTransparency < 1
+			and currentTransparency >= 1
+
+		previousTransparency =
+			currentTransparency
+
+		if not becameInvisible then
+			return
+		end
+
+		--==================================================
+		-- CONTINUE OFF
+		--==================================================
+
+		if not ContinueAfterBusEnabled then
+
+			-- Stay in bus.
+			GetItemsEnabled = false
+
+			return
+		end
+
+		--==================================================
+		-- CONTINUE ON
+		--==================================================
+
+		if ContinueAfterBusRunning then
+			return
+		end
+
+		task.spawn(function()
+			StartBusCollection()
+		end)
+
+	end)
+end
+
+SetupBusMonitor(char)
+
+--==================================================
+-- CHARACTER ADDED
+--==================================================
+
+lp.CharacterAdded:Connect(function(c)
+
+	task.wait(0.2)
+
+	char = c
+
+	BombPickedThisRound = false
+	BombTeleportedThisRound = false
+
+	lastPicked = nil
+
+	ContinueAfterBusRunning = false
+	CollectionRunning = false
+	CollectionCooldown = false
+
+	CollectionCycle = 0
+
+	SetupBusMonitor(c)
+end)
+
+--==================================================
+-- MAIN COLLECTION LOOP
+--
+-- 4 ITEMS
+-- WAIT 5 SEC
+-- 7 ITEMS
+-- WAIT 5 SEC
+-- 7 ITEMS
+-- WAIT 5 SEC
+-- REPEAT
+--==================================================
+
 task.spawn(function()
+
 	while true do
+
 		if GetItemsEnabled
 			and not blocked
 			and not recoveryRunning
+			and not ContinueAfterBusRunning
+			and not CollectionCooldown
+			and not CollectionRunning
 			and CountdownAllowed() then
 
-			local tool = FindAllowedTool(15)
+			local amount
 
-			if tool then
-				task.wait(0.2)
+			if CollectionCycle == 0 then
+				amount = 4
+			else
+				amount = 7
+			end
 
-				if GetItemsEnabled
-					and not blocked
-					and not recoveryRunning
-					and CountdownAllowed()
-					and tool.Parent then
+			local picked =
+				CollectItems(amount)
 
-					TPWaitLookPickup(tool)
-				end
+			if picked > 0 then
+
+				CollectionCycle += 1
+
+				-- 5 second cooldown after every collection.
+				CollectionCooldown = true
+
+				task.wait(5)
+
+				CollectionCooldown = false
 			end
 		end
 
@@ -1192,25 +1740,20 @@ task.spawn(function()
 	end
 end)
 
-Players.LocalPlayer.CharacterAdded:Connect(function()
-	BombPickedThisRound = false
-	lastPicked = nil
-	blocked = false
-	recoveryRunning = false
-end)
+--==================================================
+-- INSTANT LANDING
+--==================================================
 
 task.spawn(function()
+
 	while true do
-		local timeLeftObj = GetCountdownObject()
-		local allowed = CountdownAllowed()
 
-		if not allowed then
-			ShowPopup("Countdown too high — TP blocked")
-		else
-			ShowPopup("Countdown is 3 or less — TP allowed")
-		end
+		local timeLeftObj =
+			GetCountdownObject()
 
-		if timeLeftObj and timeLeftObj.Text == "1" then
+		if timeLeftObj
+			and timeLeftObj.Text == "1" then
+
 			task.wait(1.2)
 
 			if ILEnabled then
@@ -1218,91 +1761,46 @@ task.spawn(function()
 			end
 		end
 
-		if GetItemsEnabled
-			and allowed
-			and not blocked
-			and not recoveryRunning then
+		task.wait(0.2)
+	end
+end)
 
-			local currentChar = lp.Character
-			local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+--==================================================
+-- ROUND RESET
+--==================================================
 
-			if hrp then
-				local bomb = nil
-				local strengthList = {}
-				local bullList = {}
-				local bobaList = {}
-				local speedList = {}
-				local frogList = {}
+task.spawn(function()
 
-				for _,obj in ipairs(Items:GetChildren()) do
-					if obj:IsA("Tool") then
-						local handle = obj:FindFirstChild("Handle")
+	local wasHigh = false
 
-						if handle then
-							if obj.Name == "Bomb" and not BombPickedThisRound and not bomb then
-								bomb = obj
-							elseif obj.Name == "Potion of Strength" then
-								table.insert(strengthList,obj)
-							elseif obj.Name == "Bull's essence" then
-								table.insert(bullList,obj)
-							elseif obj.Name == "Boba" then
-								table.insert(bobaList,obj)
-							elseif obj.Name == "Speed Potion" then
-								table.insert(speedList,obj)
-							elseif obj.Name == "Frog Potion" then
-								table.insert(frogList,obj)
-							end
-						end
-					end
-				end
+	while true do
 
-				local order = {
-					{bomb},
-					strengthList,
-					bullList,
-					bobaList,
-					speedList,
-					frogList
-				}
+		local value =
+			GetCountdown()
 
-				local picked = 0
+		if value and value > 3 then
 
-				for _,group in ipairs(order) do
-					for _,tool in ipairs(group) do
-						if tool
-							and GetItemsEnabled
-							and not blocked
-							and not recoveryRunning
-							and CountdownAllowed() then
+			if not wasHigh then
 
-							local success = TPWaitLookPickup(tool)
+				BombPickedThisRound = false
+				BombTeleportedThisRound = false
 
-							if success then
-								picked += 1
+				lastPicked = nil
 
-								if tool.Name == "Bomb" then
-									BombPickedThisRound = true
-								end
-							end
+				CollectionCycle = 0
 
-							if picked >= 4 then
-								break
-							end
-						end
-					end
-
-					if picked >= 4 then
-						break
-					end
-				end
-
-				if picked > 0 then
-					task.wait(5)
-				end
+				CollectionRunning = false
+				CollectionCooldown = false
 			end
+
+			wasHigh = true
+
+		else
+
+			wasHigh = false
 		end
 
-		task.wait(0.2)
+		task.wait(0.5)
 	end
 end)
 
