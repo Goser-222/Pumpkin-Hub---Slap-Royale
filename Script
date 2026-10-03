@@ -333,7 +333,7 @@ local Window=Rayfield:CreateWindow({
 Rayfield:Notify({
 	Title = "IMPORTANT!",
 	Content = "USING THIS SCRIPT CAN RESULT IN A PERMANENT BAN USE ON OWN RISK",
-	Duration = 5,
+	Duration = 7,
 })
 
 local CombatTab=Window:CreateTab("Combat",4483345998)
