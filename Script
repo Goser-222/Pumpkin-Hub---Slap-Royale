@@ -2,6 +2,7 @@
 -- This script is made for the mode Slap Royale in the game Slap Battles.
 -- Low ping is recommended because delays can cause kicks so the recommended ping is 0 to 100 if your below this you should be fine.
 -- This script has features that no other current script has (when writing this) and yes they work like anti acid and auto win.
+-- This script has one of the best slap auras in slap royale so you will be able to kill exploiters easy as pie.
 -- Huge thank you for choosing Pumpkin Hub!
 
 local Players=game:GetService("Players")
