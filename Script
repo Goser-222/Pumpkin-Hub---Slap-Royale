@@ -534,6 +534,25 @@ OtherTab:CreateToggle({
 	end
 })
 
+local InfJumpEnabled = false
+
+OtherTab:CreateToggle({
+	Name = "Infinite Jump",
+	CurrentValue = false,
+	Callback = function(v)
+		InfJumpEnabled = v
+	end
+})
+
+UIS.JumpRequest:Connect(function()
+	if InfJumpEnabled then
+		local hum = Char and Char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end)
+
 OtherTab:CreateButton({
 	Name = "Get Lab Code",
 	Callback = function()
@@ -2239,7 +2258,7 @@ local function StartGetAllItems()
 					and GetAllItemsEnabled
 					and tool.Parent then
 
-					-- Wait 0.2 seconds after arriving.
+					-- Wait 0.4 seconds after arriving.
 					task.wait(0.4)
 
 					if GetAllItemsEnabled
