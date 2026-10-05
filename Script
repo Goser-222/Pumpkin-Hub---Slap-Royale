@@ -443,10 +443,16 @@ ItemsTab:CreateToggle({
 })
 
 ItemsTab:CreateToggle({
-	Name="Get Items",
-	CurrentValue=false,
-	Callback=function(v)
-		GetItemsEnabled=v
+	Name = "Get Items",
+	CurrentValue = false,
+	Callback = function(v)
+		GetItemsEnabled = v
+
+		if v then
+			-- Disable Get All Items
+			GetAllItemsEnabled = false
+			SetGetAllItemsNoclip(false)
+		end
 	end
 })
 
@@ -2310,21 +2316,22 @@ ItemsTab:CreateToggle({
 	CurrentValue = false,
 
 	Callback = function(v)
-
 		GetAllItemsEnabled = v
 
 		if v then
+			-- Disable Get Items
+			GetItemsEnabled = false
+			CollectionRunning = false
+			CollectionCooldown = false
+			lastPicked = nil
 
+			-- Enable Get All Items
 			SetGetAllItemsNoclip(true)
 
 			if not GetAllItemsRunning then
 				task.spawn(StartGetAllItems)
 			end
-
 		else
-
-			GetAllItemsEnabled = false
-
 			SetGetAllItemsNoclip(false)
 		end
 	end
