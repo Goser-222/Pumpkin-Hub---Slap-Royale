@@ -570,6 +570,9 @@ OtherTab:CreateButton({
 	Name = "Get Lab Code",
 	Callback = function()
 
+		local Players = game:GetService("Players")
+		local LocalPlayer = Players.LocalPlayer
+
 		local codes = {
 			["9648755440"] = "8",
 			["9648765536"] = "2",
@@ -588,9 +591,32 @@ OtherTab:CreateButton({
 			["9648738553"] = "8"
 		}
 
-		local surfaceGui = workspace.Map.CodeBrick.SurfaceGui
+		-- Get Map
+		local map = workspace:FindFirstChild("Map")
 
-		-- Find the actual IMGTemplate objects
+		if not map then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "Map not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Get code GUI
+		local codeBrick = map:FindFirstChild("CodeBrick")
+		local surfaceGui = codeBrick and codeBrick:FindFirstChild("SurfaceGui")
+
+		if not surfaceGui then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "CodeBrick/SurfaceGui not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Find IMGTemplate objects
 		local templates = {}
 
 		for _, obj in ipairs(surfaceGui:GetChildren()) do
@@ -608,8 +634,7 @@ OtherTab:CreateButton({
 			return
 		end
 
-		-- Use the GUI's actual position.
-		-- X is primary, Y is secondary.
+		-- Sort images left to right
 		table.sort(templates, function(a, b)
 			local ax = a.AbsolutePosition.X
 			local bx = b.AbsolutePosition.X
@@ -623,11 +648,11 @@ OtherTab:CreateButton({
 
 		local result = {}
 
+		-- Convert images to digits
 		for i, imageObject in ipairs(templates) do
 
 			local image = tostring(imageObject.Image)
 
-			-- Extract the numeric Roblox asset ID.
 			local assetId =
 				image:match("[?&]id=(%d+)")
 				or image:match("rbxassetid://(%d+)")
@@ -638,8 +663,8 @@ OtherTab:CreateButton({
 			if not digit then
 				Rayfield:Notify({
 					Title = "Get Lab Code",
-					Content = "Unknown image at position " .. i
-						.. ": " .. image,
+					Content = "Unknown image at position "
+						.. i .. ": " .. image,
 					Duration = 5
 				})
 				return
@@ -650,9 +675,166 @@ OtherTab:CreateButton({
 
 		local CodeEsp = table.concat(result)
 
+		-- Get CodeDoor
+		local originOffice = map:FindFirstChild("OriginOffice")
+
+		if not originOffice then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "OriginOffice not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		local codeDoor = originOffice:FindFirstChild("CodeDoor")
+		local door = codeDoor and codeDoor:FindFirstChild("Door")
+
+		if not door then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "Door not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Get Door BasePart
+		local doorPart
+
+		if door:IsA("BasePart") then
+			doorPart = door
+		else
+			doorPart = door:FindFirstChildWhichIsA("BasePart", true)
+		end
+
+		if not doorPart then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "No BasePart found inside Door.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Get character
+		local character = LocalPlayer.Character
+			or LocalPlayer.CharacterAdded:Wait()
+
+		local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+		if not rootPart then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "HumanoidRootPart not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- ==========================================
+		-- TELEPORT 20 STUDS TO THE LEFT OF THE DOOR
+		-- ==========================================
+
+		local leftOffset =
+			-doorPart.CFrame.RightVector * 20
+
+		local targetPosition =
+			doorPart.Position + leftOffset
+
+		-- Preserve player's current rotation
+		local currentRotation =
+			rootPart.CFrame - rootPart.CFrame.Position
+
+		-- Teleport BEFORE entering the code
+		rootPart.CFrame =
+			CFrame.new(targetPosition) * currentRotation
+
+		-- ==========================================
+		-- GET KEYPAD
+		-- ==========================================
+
+		local keypad = door:FindFirstChild("Keypad")
+		local buttonsFolder = keypad and keypad:FindFirstChild("Buttons")
+
+		if not buttonsFolder then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "Keypad Buttons not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- ==========================================
+		-- ENTER CODE
+		-- ==========================================
+
+		for i = 1, #CodeEsp do
+
+			local digit = CodeEsp:sub(i, i)
+			local button = buttonsFolder:FindFirstChild(digit)
+
+			if not button then
+				Rayfield:Notify({
+					Title = "Get Lab Code",
+					Content = "Button " .. digit .. " not found.",
+					Duration = 5
+				})
+				return
+			end
+
+			local clickDetector =
+				button:FindFirstChildOfClass("ClickDetector")
+
+			if not clickDetector then
+				Rayfield:Notify({
+					Title = "Get Lab Code",
+					Content = "ClickDetector missing from button "
+						.. digit .. ".",
+					Duration = 5
+				})
+				return
+			end
+
+			fireclickdetector(clickDetector)
+
+			task.wait(0.15)
+		end
+
+		-- ==========================================
+		-- PRESS ENTER
+		-- ==========================================
+
+		local enterButton =
+			buttonsFolder:FindFirstChild("Enter")
+
+		if not enterButton then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "Enter button not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		local enterDetector =
+			enterButton:FindFirstChildOfClass("ClickDetector")
+
+		if not enterDetector then
+			Rayfield:Notify({
+				Title = "Get Lab Code",
+				Content = "ClickDetector missing from Enter.",
+				Duration = 5
+			})
+			return
+		end
+
+		fireclickdetector(enterDetector)
+
 		Rayfield:Notify({
-			Title = "You have code [ " .. CodeEsp .. " ]",
-			Content = "",
+			Title = "Code Entered [ " .. CodeEsp .. " ]",
+			Content = "Teleported left of door and entered code.",
 			Duration = 5
 		})
 	end
