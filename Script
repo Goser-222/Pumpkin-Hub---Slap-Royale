@@ -1038,6 +1038,122 @@ OtherTab:CreateButton({
 		})
 	end
 })
+
+OtherTab:CreateButton({
+	Name = "Show Lab Code",
+	Callback = function()
+
+		local codes = {
+			["9648755440"] = "8",
+			["9648765536"] = "2",
+			["9648723237"] = "3",
+			["9648718450"] = "6",
+			["9648769161"] = "4",
+			["9648730082"] = "6",
+			["9648734698"] = "2",
+			["9648712563"] = "2",
+			["9648742013"] = "7",
+			["9648745618"] = "3",
+			["9648715920"] = "6",
+			["9648752438"] = "2",
+			["9648749145"] = "8",
+			["9648759883"] = "9",
+			["9648738553"] = "8"
+		}
+
+		-- Get Map
+		local map = workspace:FindFirstChild("Map")
+
+		if not map then
+			Rayfield:Notify({
+				Title = "Show Lab Code",
+				Content = "Map not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Get code GUI
+		local codeBrick = map:FindFirstChild("CodeBrick")
+		local surfaceGui = codeBrick and codeBrick:FindFirstChild("SurfaceGui")
+
+		if not surfaceGui then
+			Rayfield:Notify({
+				Title = "Show Lab Code",
+				Content = "CodeBrick/SurfaceGui not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Find IMGTemplate objects
+		local templates = {}
+
+		for _, obj in ipairs(surfaceGui:GetChildren()) do
+			if obj.Name == "IMGTemplate" then
+				table.insert(templates, obj)
+			end
+		end
+
+		if #templates ~= 4 then
+			Rayfield:Notify({
+				Title = "Show Lab Code",
+				Content = "Found " .. #templates .. " images instead of 4.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Sort images left to right
+		table.sort(templates, function(a, b)
+			local ax = a.AbsolutePosition.X
+			local bx = b.AbsolutePosition.X
+
+			if math.abs(ax - bx) > 1 then
+				return ax < bx
+			end
+
+			return a.AbsolutePosition.Y < b.AbsolutePosition.Y
+		end)
+
+		local result = {}
+
+		-- Convert images to digits
+		for i, imageObject in ipairs(templates) do
+
+			local image = tostring(imageObject.Image)
+
+			local assetId =
+				image:match("[?&]id=(%d+)")
+				or image:match("rbxassetid://(%d+)")
+				or image:match("(%d+)$")
+
+			local digit = assetId and codes[assetId]
+
+			if not digit then
+				Rayfield:Notify({
+					Title = "Show Lab Code",
+					Content = "Unknown image at position "
+						.. i .. ": " .. image,
+					Duration = 5
+				})
+				return
+			end
+
+			result[i] = digit
+		end
+
+		local CodeEsp = table.concat(result)
+
+		-- Show code for 10 seconds
+		Rayfield:Notify({
+			Title = "Lab Code: " .. CodeEsp,
+			Content = "Code will disappear in 10 seconds.",
+			Duration = 10
+		})
+	end
+})
+
 OtherTab:CreateButton({
 	Name="Lobby Hider",
 	Callback=function()
