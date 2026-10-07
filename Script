@@ -943,7 +943,7 @@ SafetyTab:CreateToggle({
 })
 
 SafetyTab:CreateToggle({
-	Name = "Go Under Map",
+	Name = "Go Under Map (Use Anti Acid with this for it to not get you killed)",
 	CurrentValue = false,
 	Callback = function(Value)
 
@@ -953,7 +953,7 @@ SafetyTab:CreateToggle({
 		-- 2 second cooldown
 		if _G.GoUnderMapCooldown then
 			Rayfield:Notify({
-				Title = "Go Under Map (Don't use too often can cause kick)",
+				Title = "Go Under Map",
 				Content = "Teleport is on cooldown.",
 				Duration = 2
 			})
