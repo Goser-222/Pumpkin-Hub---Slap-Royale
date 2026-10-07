@@ -567,7 +567,7 @@ UIS.JumpRequest:Connect(function()
 end)
 
 OtherTab:CreateButton({
-	Name = "Get Lab Code",
+	Name = "Open Lab + Teleport",
 	Callback = function()
 
 		local Players = game:GetService("Players")
@@ -596,7 +596,7 @@ OtherTab:CreateButton({
 
 		if not map then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "Map not found.",
 				Duration = 5
 			})
@@ -609,7 +609,7 @@ OtherTab:CreateButton({
 
 		if not surfaceGui then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "CodeBrick/SurfaceGui not found.",
 				Duration = 5
 			})
@@ -627,7 +627,7 @@ OtherTab:CreateButton({
 
 		if #templates ~= 4 then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "Found " .. #templates .. " images instead of 4.",
 				Duration = 5
 			})
@@ -662,7 +662,7 @@ OtherTab:CreateButton({
 
 			if not digit then
 				Rayfield:Notify({
-					Title = "Get Lab Code",
+					Title = "Open Lab + Teleport",
 					Content = "Unknown image at position "
 						.. i .. ": " .. image,
 					Duration = 5
@@ -680,7 +680,7 @@ OtherTab:CreateButton({
 
 		if not originOffice then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "OriginOffice not found.",
 				Duration = 5
 			})
@@ -692,7 +692,7 @@ OtherTab:CreateButton({
 
 		if not door then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "Door not found.",
 				Duration = 5
 			})
@@ -710,7 +710,7 @@ OtherTab:CreateButton({
 
 		if not doorPart then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "No BasePart found inside Door.",
 				Duration = 5
 			})
@@ -725,7 +725,7 @@ OtherTab:CreateButton({
 
 		if not rootPart then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "HumanoidRootPart not found.",
 				Duration = 5
 			})
@@ -759,12 +759,45 @@ OtherTab:CreateButton({
 
 		if not buttonsFolder then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "Keypad Buttons not found.",
 				Duration = 5
 			})
 			return
 		end
+
+		-- ==========================================
+		-- RESET KEYPAD BEFORE ENTERING CODE
+		-- ==========================================
+
+		local resetButton = buttonsFolder:FindFirstChild("Reset")
+
+		if not resetButton then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "Reset button not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		local resetDetector =
+			resetButton:FindFirstChildOfClass("ClickDetector")
+
+		if not resetDetector then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "ClickDetector missing from Reset.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Clear anything already entered
+		fireclickdetector(resetDetector)
+
+		-- Small delay to let the keypad process Reset
+		task.wait(0.2)
 
 		-- ==========================================
 		-- ENTER CODE
@@ -777,7 +810,7 @@ OtherTab:CreateButton({
 
 			if not button then
 				Rayfield:Notify({
-					Title = "Get Lab Code",
+					Title = "Open Lab + Teleport",
 					Content = "Button " .. digit .. " not found.",
 					Duration = 5
 				})
@@ -789,7 +822,7 @@ OtherTab:CreateButton({
 
 			if not clickDetector then
 				Rayfield:Notify({
-					Title = "Get Lab Code",
+					Title = "Open Lab + Teleport",
 					Content = "ClickDetector missing from button "
 						.. digit .. ".",
 					Duration = 5
@@ -811,7 +844,7 @@ OtherTab:CreateButton({
 
 		if not enterButton then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "Enter button not found.",
 				Duration = 5
 			})
@@ -823,7 +856,7 @@ OtherTab:CreateButton({
 
 		if not enterDetector then
 			Rayfield:Notify({
-				Title = "Get Lab Code",
+				Title = "Open Lab + Teleport",
 				Content = "ClickDetector missing from Enter.",
 				Duration = 5
 			})
@@ -834,12 +867,11 @@ OtherTab:CreateButton({
 
 		Rayfield:Notify({
 			Title = "Code Entered [ " .. CodeEsp .. " ]",
-			Content = "Teleported left of door and entered code.",
+			Content = "Reset keypad, teleported left of door, and entered code.",
 			Duration = 5
 		})
 	end
 })
-
 OtherTab:CreateButton({
 	Name="Lobby Hider",
 	Callback=function()
@@ -907,6 +939,137 @@ SafetyTab:CreateToggle({
 	CurrentValue = false,
 	Callback = function(v)
 		_G.AntiKnockback = v
+	end
+})
+
+SafetyTab:CreateToggle({
+	Name = "Go Under Map",
+	CurrentValue = false,
+	Callback = function(Value)
+
+		local Players = game:GetService("Players")
+		local LocalPlayer = Players.LocalPlayer
+
+		-- 2 second cooldown
+		if _G.GoUnderMapCooldown then
+			Rayfield:Notify({
+				Title = "Go Under Map (Don't use too often can cause kick)",
+				Content = "Teleport is on cooldown.",
+				Duration = 2
+			})
+			return
+		end
+
+		local character = LocalPlayer.Character
+			or LocalPlayer.CharacterAdded:Wait()
+
+		local rootPart = character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+		if not rootPart or not humanoid then
+			Rayfield:Notify({
+				Title = "Go Under Map",
+				Content = "Character not ready.",
+				Duration = 5
+			})
+			return
+		end
+
+		_G.GoUnderMapCooldown = true
+
+		if Value then
+			-- ==========================================
+			-- ON: TELEPORT 30 STUDS DOWN
+			-- ==========================================
+
+			rootPart.CFrame =
+				rootPart.CFrame + Vector3.new(0, -30, 0)
+
+			Rayfield:Notify({
+				Title = "Go Under Map",
+				Content = "Teleported 30 studs down.",
+				Duration = 3
+			})
+
+		else
+			-- ==========================================
+			-- OFF: FIND TOP OF TERRAIN
+			-- ==========================================
+
+			local terrain = workspace:FindFirstChildOfClass("Terrain")
+
+			if not terrain then
+				_G.GoUnderMapCooldown = false
+
+				Rayfield:Notify({
+					Title = "Go Under Map",
+					Content = "Terrain not found.",
+					Duration = 5
+				})
+				return
+			end
+
+			-- Start high above the player and raycast DOWN.
+			-- This finds the TOP surface of the terrain.
+			local rayOrigin =
+				rootPart.Position + Vector3.new(0, 1000, 0)
+
+			local rayDirection =
+				Vector3.new(0, -2000, 0)
+
+			local rayParams = RaycastParams.new()
+			rayParams.FilterType = Enum.RaycastFilterType.Include
+			rayParams.FilterDescendantsInstances = {
+				terrain
+			}
+			rayParams.IgnoreWater = true
+
+			local rayResult = workspace:Raycast(
+				rayOrigin,
+				rayDirection,
+				rayParams
+			)
+
+			if not rayResult then
+				_G.GoUnderMapCooldown = false
+
+				Rayfield:Notify({
+					Title = "Go Under Map",
+					Content = "Could not find the top of the terrain.",
+					Duration = 5
+				})
+				return
+			end
+
+			-- Character height
+			local halfHeight = rootPart.Size.Y / 2
+
+			-- Put the HumanoidRootPart above the terrain.
+			local targetPosition =
+				rayResult.Position
+				+ Vector3.new(0, halfHeight + 2, 0)
+
+			-- Preserve rotation
+			local currentRotation =
+				rootPart.CFrame - rootPart.CFrame.Position
+
+			rootPart.CFrame =
+				CFrame.new(targetPosition) * currentRotation
+
+			Rayfield:Notify({
+				Title = "Go Under Map",
+				Content = "Teleported on top of the terrain.",
+				Duration = 3
+			})
+		end
+
+		-- ==========================================
+		-- 2 SECOND COOLDOWN
+		-- ==========================================
+
+		task.delay(2, function()
+			_G.GoUnderMapCooldown = false
+		end)
 	end
 })
 
