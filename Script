@@ -474,6 +474,146 @@ ItemsTab:CreateToggle({
 	end
 })
 
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+local AutoGetCrates = false
+
+local function GetRoot()
+	local character = LocalPlayer.Character
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function ProcessCrate(crate)
+	if not AutoGetCrates then
+		return
+	end
+
+	if not crate:IsA("Model") or crate.Name ~= "Crate" then
+		return
+	end
+
+	local rootPart = GetRoot()
+	if not rootPart then
+		return
+	end
+
+	-- Get the crate's position
+	local crateCFrame
+
+	if crate.PrimaryPart then
+		crateCFrame = crate.PrimaryPart.CFrame
+	else
+		crateCFrame = crate:GetPivot()
+	end
+
+	-- Teleport 10 studs underneath the crate
+	local targetPosition =
+		crateCFrame.Position - Vector3.new(0, 10, 0)
+
+	rootPart.CFrame =
+		CFrame.new(targetPosition) *
+		(rootPart.CFrame - rootPart.CFrame.Position)
+
+	-- Find Effects.Basic Flame Wisp
+	local effects = crate:FindFirstChild("Effects", true)
+	local basic = effects and effects:FindFirstChild("Basic")
+	local flameWisp = basic and basic:FindFirstChild("Flame Wisp")
+
+	-- Wait until Flame Wisp is disabled
+	if flameWisp and flameWisp:IsA("ParticleEmitter") then
+		while AutoGetCrates
+			and crate.Parent
+			and flameWisp.Enabled do
+
+			task.wait(0.1)
+		end
+	end
+
+	if not AutoGetCrates or not crate.Parent then
+		return
+	end
+
+	-- Find GetItemFromCrate
+	local remote = crate:FindFirstChild("GetItemFromCrate", true)
+
+	if not remote then
+		warn("GetItemFromCrate not found in crate:", crate:GetFullName())
+		return
+	end
+
+	if remote:IsA("RemoteEvent") then
+		remote:FireServer()
+
+	elseif remote:IsA("RemoteFunction") then
+		remote:InvokeServer()
+	end
+end
+
+ItemsTab:CreateToggle({
+	Name = "Auto Get Crates [NOT FINSIHED]",
+	CurrentValue = false,
+
+	Callback = function(Value)
+
+		AutoGetCrates = Value
+
+		if not Value then
+			return
+		end
+
+		local shipments = workspace:FindFirstChild("Shipments")
+		local cratesFolder = shipments and shipments:FindFirstChild("Crates")
+
+		if not cratesFolder then
+			Rayfield:Notify({
+				Title = "Auto Get Crates",
+				Content = "Workspace.Shipments.Crates not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Process crates that already exist
+		for _, crate in ipairs(cratesFolder:GetChildren()) do
+			task.spawn(function()
+				ProcessCrate(crate)
+			end)
+		end
+
+		-- Process newly spawned crates
+		task.spawn(function()
+
+			while AutoGetCrates and cratesFolder.Parent do
+
+				local connection
+
+				connection = cratesFolder.ChildAdded:Connect(function(crate)
+					if AutoGetCrates
+						and crate:IsA("Model")
+						and crate.Name == "Crate" then
+
+						task.spawn(function()
+							ProcessCrate(crate)
+						end)
+					end
+				end)
+
+				repeat
+					task.wait(1)
+				until not AutoGetCrates or not cratesFolder.Parent
+
+				if connection then
+					connection:Disconnect()
+				end
+			end
+		end)
+	end
+})
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
