@@ -475,18 +475,74 @@ ItemsTab:CreateToggle({
 })
 
 
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+
+local PlayerESPEnabled = false
+
+local function CreateNameTag(char)
+	local head = char:FindFirstChild("Head")
+	if not head then
+		return
+	end
+
+	local oldTag = head:FindFirstChild("PlayerESP")
+	if oldTag then
+		oldTag:Destroy()
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "PlayerESP"
+	billboard.Adornee = head
+	billboard.Size = UDim2.new(0, 200, 0, 35)
+	billboard.StudsOffset = Vector3.new(0, 3, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = head
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Name = "Name"
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Size = UDim2.new(1, 0, 1, 0)
+	nameLabel.Text = char.Name
+	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	nameLabel.TextStrokeTransparency = 0
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	nameLabel.TextScaled = true
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.Parent = billboard
+end
+
+local function RemoveNameTag(char)
+	local head = char:FindFirstChild("Head")
+
+	if head then
+		local billboard = head:FindFirstChild("PlayerESP")
+
+		if billboard then
+			billboard:Destroy()
+		end
+	end
+end
+
 ESPTab:CreateToggle({
-	Name="Player ESP",
-	CurrentValue=false,
-	Callback=function(v)
-		PlayerESPEnabled=v
-		if v then
-			for _,char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
-				local hrp=char:FindFirstChild("HumanoidRootPart")
+	Name = "Player ESP",
+	CurrentValue = false,
+	Callback = function(v)
+
+		PlayerESPEnabled = v
+
+		for _, char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
+
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+
+			if v then
 				if hrp then
 					ApplyHighlight(hrp)
-					CreateNameTag(char)
 				end
+
+				CreateNameTag(char)
+			else
+				RemoveNameTag(char)
 			end
 		end
 	end
@@ -500,6 +556,116 @@ ESPTab:CreateToggle({
 		if v then
 			for _,tool in ipairs(CollectionService:GetTagged("PumpkinItem")) do
 				CreateToolTag(tool)
+			end
+		end
+	end
+})
+
+local GloveESPEnabled = false
+
+local function GetGloveValue(player)
+	local glove = player:FindFirstChild("Glove")
+
+	if not glove then
+		return nil
+	end
+
+	-- Supports StringValue and similar Value objects
+	local success, value = pcall(function()
+		return glove.Value
+	end)
+
+	if success and value ~= nil then
+		return tostring(value)
+	end
+
+	return nil
+end
+
+local function UpdateGloveTag(char)
+	if not GloveESPEnabled then
+		return
+	end
+
+	local head = char:FindFirstChild("Head")
+	if not head then
+		return
+	end
+
+	local player = Players:GetPlayerFromCharacter(char)
+	if not player then
+		return
+	end
+
+	local playerESP = head:FindFirstChild("PlayerESP")
+
+	if not playerESP then
+		return
+	end
+
+	local gloveLabel = playerESP:FindFirstChild("Glove")
+
+	if not gloveLabel then
+		gloveLabel = Instance.new("TextLabel")
+		gloveLabel.Name = "Glove"
+		gloveLabel.BackgroundTransparency = 1
+		gloveLabel.Size = UDim2.new(1, 0, 0, 20)
+		gloveLabel.Position = UDim2.new(0, 0, 0, 25)
+		gloveLabel.TextColor3 = Color3.fromRGB(255, 220, 80)
+		gloveLabel.TextStrokeTransparency = 0
+		gloveLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		gloveLabel.TextScaled = true
+		gloveLabel.Font = Enum.Font.GothamBold
+		gloveLabel.Parent = playerESP
+	end
+
+	local gloveValue = GetGloveValue(player)
+
+	if gloveValue then
+		gloveLabel.Text = gloveValue
+		gloveLabel.Visible = true
+	else
+		gloveLabel.Text = "Unknown"
+		gloveLabel.Visible = true
+	end
+end
+
+local function RemoveGloveTag(char)
+	local head = char:FindFirstChild("Head")
+
+	if not head then
+		return
+	end
+
+	local playerESP = head:FindFirstChild("PlayerESP")
+
+	if not playerESP then
+		return
+	end
+
+	local gloveLabel = playerESP:FindFirstChild("Glove")
+
+	if gloveLabel then
+		gloveLabel:Destroy()
+	end
+
+	-- Restore normal Player ESP size
+	playerESP.Size = UDim2.new(0, 200, 0, 35)
+end
+
+ESPTab:CreateToggle({
+	Name = "Glove ESP (Need Player ESP on to work)",
+	CurrentValue = false,
+	Callback = function(v)
+
+		GloveESPEnabled = v
+
+		for _, char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
+
+			if v then
+				UpdateGloveTag(char)
+			else
+				RemoveGloveTag(char)
 			end
 		end
 	end
