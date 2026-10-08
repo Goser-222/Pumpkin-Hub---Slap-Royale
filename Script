@@ -434,6 +434,727 @@ task.spawn(function()
 	end
 end)
 
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+
+local TargetPlayer = nil
+local TeleportToTargetEnabled = false
+local TeleportLoopRunning = false
+
+-- Ragdoll tracking
+local RagdollWaitCount = 0
+local MaxRagdollWaits = 5
+local RagdollCooldown = 10
+
+-- Target death/respawn connection
+local TargetCharacterConnection = nil
+local TargetDeathConnection = nil
+
+--------------------------------------------------
+-- TARGET LIST
+--------------------------------------------------
+
+local function GetPlayerNames()
+	local names = {}
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			table.insert(names, player.Name)
+		end
+	end
+
+	table.sort(names)
+
+	return names
+end
+
+--------------------------------------------------
+-- FIND PLAYER
+--------------------------------------------------
+
+local function FindPlayer(name)
+	if not name then
+		return nil
+	end
+
+	return Players:FindFirstChild(name)
+end
+
+--------------------------------------------------
+-- DISCONNECT TARGET CONNECTIONS
+--------------------------------------------------
+
+local function DisconnectTargetConnections()
+
+	if TargetCharacterConnection then
+		TargetCharacterConnection:Disconnect()
+		TargetCharacterConnection = nil
+	end
+
+	if TargetDeathConnection then
+		TargetDeathConnection:Disconnect()
+		TargetDeathConnection = nil
+	end
+end
+
+--------------------------------------------------
+-- TARGET DEATH
+--------------------------------------------------
+
+local function SetupTargetDeathDetection()
+
+	DisconnectTargetConnections()
+
+	if not TargetPlayer then
+		return
+	end
+
+	--------------------------------------------------
+	-- SETUP HUMANOID DEATH DETECTION
+	--------------------------------------------------
+
+	local function SetupCharacter(character)
+
+		if not character then
+			return
+		end
+
+		if TargetDeathConnection then
+			TargetDeathConnection:Disconnect()
+			TargetDeathConnection = nil
+		end
+
+		local humanoid =
+			character:WaitForChild(
+				"Humanoid",
+				5
+			)
+
+		if not humanoid then
+			return
+		end
+
+		TargetDeathConnection =
+			humanoid.Died:Connect(function()
+
+				-- Disable teleport
+				TeleportToTargetEnabled = false
+
+				-- Reset counter
+				RagdollWaitCount = 0
+
+				Rayfield:Notify({
+					Title = "Teleport To Target",
+					Content = TargetPlayer.Name
+						.. " died. Teleport disabled.",
+					Duration = 3
+				})
+			end)
+	end
+
+	--------------------------------------------------
+	-- CURRENT CHARACTER
+	--------------------------------------------------
+
+	if TargetPlayer.Character then
+		task.spawn(function()
+			SetupCharacter(TargetPlayer.Character)
+		end)
+	end
+
+	--------------------------------------------------
+	-- FUTURE RESPAWN
+	--------------------------------------------------
+
+	TargetCharacterConnection =
+		TargetPlayer.CharacterAdded:Connect(function(character)
+
+			-- Wait for new humanoid
+			task.spawn(function()
+				SetupCharacter(character)
+			end)
+
+		end)
+end
+
+--------------------------------------------------
+-- TARGET DROPDOWN
+--------------------------------------------------
+
+local TargetDropdown = CombatTab:CreateDropdown({
+	Name = "Target",
+	Options = GetPlayerNames(),
+	CurrentOption = {},
+	MultipleOptions = false,
+
+	Callback = function(option)
+
+		local selectedName
+
+		if type(option) == "table" then
+			selectedName = option[1]
+		else
+			selectedName = option
+		end
+
+		--------------------------------------------------
+		-- REMOVE OLD TARGET CONNECTIONS
+		--------------------------------------------------
+
+		DisconnectTargetConnections()
+
+		--------------------------------------------------
+		-- SET NEW TARGET
+		--------------------------------------------------
+
+		TargetPlayer =
+			FindPlayer(selectedName)
+
+		-- Reset ragdoll counter
+		RagdollWaitCount = 0
+
+		if TargetPlayer then
+
+			SetupTargetDeathDetection()
+
+			Rayfield:Notify({
+				Title = "Target",
+				Content = "Selected: "
+					.. TargetPlayer.Name,
+				Duration = 3
+			})
+
+		else
+
+			TargetPlayer = nil
+
+		end
+	end
+})
+
+--------------------------------------------------
+-- REFRESH TARGET LIST
+--------------------------------------------------
+
+local function RefreshTargetList()
+
+	TargetDropdown:Refresh(
+		GetPlayerNames(),
+		true
+	)
+
+	if TargetPlayer
+		and not TargetPlayer.Parent then
+
+		DisconnectTargetConnections()
+
+		TargetPlayer = nil
+		TeleportToTargetEnabled = false
+		RagdollWaitCount = 0
+	end
+end
+
+Players.PlayerAdded:Connect(function()
+
+	task.wait(0.1)
+
+	RefreshTargetList()
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+
+	if TargetPlayer == player then
+
+		DisconnectTargetConnections()
+
+		TargetPlayer = nil
+		TeleportToTargetEnabled = false
+		RagdollWaitCount = 0
+	end
+
+	task.wait(0.1)
+
+	RefreshTargetList()
+end)
+
+--------------------------------------------------
+-- LOCAL ROOT
+--------------------------------------------------
+
+local function GetLocalRoot()
+
+	local character =
+		LocalPlayer.Character
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild(
+		"HumanoidRootPart"
+	)
+end
+
+--------------------------------------------------
+-- TARGET ROOT
+--------------------------------------------------
+
+local function GetTargetRoot()
+
+	if not TargetPlayer then
+		return nil
+	end
+
+	local character =
+		TargetPlayer.Character
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild(
+		"HumanoidRootPart"
+	)
+end
+
+--------------------------------------------------
+-- RAGDOLL CHECK
+--------------------------------------------------
+
+local function IsTargetRagdolled()
+
+	if not TargetPlayer then
+		return false
+	end
+
+	local character =
+		TargetPlayer.Character
+
+	if not character then
+		return false
+	end
+
+	--------------------------------------------------
+	-- ATTRIBUTE CHECK
+	--------------------------------------------------
+
+	local ragdolledAttribute =
+		character:GetAttribute("Ragdolled")
+
+	if ragdolledAttribute == true then
+		return true
+	end
+
+	--------------------------------------------------
+	-- BOOLVALUE CHECK
+	--------------------------------------------------
+
+	local ragdolledValue =
+		character:FindFirstChild(
+			"Ragdolled",
+			true
+		)
+
+	if ragdolledValue
+		and ragdolledValue:IsA("BoolValue") then
+
+		if ragdolledValue.Value then
+			return true
+		end
+	end
+
+	--------------------------------------------------
+	-- HUMANOID STATE CHECK
+	--------------------------------------------------
+
+	local humanoid =
+		character:FindFirstChildOfClass(
+			"Humanoid"
+		)
+
+	if humanoid then
+
+		local state =
+			humanoid:GetState()
+
+		if state == Enum.HumanoidStateType.Ragdoll
+			or state == Enum.HumanoidStateType.Physics then
+
+			return true
+		end
+	end
+
+	return false
+end
+
+--------------------------------------------------
+-- CHECK TARGET DEAD
+--------------------------------------------------
+
+local function IsTargetDead()
+
+	if not TargetPlayer then
+		return true
+	end
+
+	local character =
+		TargetPlayer.Character
+
+	if not character then
+		return false
+	end
+
+	local humanoid =
+		character:FindFirstChildOfClass(
+			"Humanoid"
+		)
+
+	if not humanoid then
+		return false
+	end
+
+	return humanoid.Health <= 0
+end
+
+--------------------------------------------------
+-- WAIT UNTIL UNRAGDOLLED
+--------------------------------------------------
+
+local function WaitUntilUnragdolled()
+
+	while TeleportToTargetEnabled do
+
+		--------------------------------------------------
+		-- TARGET EXISTS?
+		--------------------------------------------------
+
+		if not TargetPlayer
+			or not TargetPlayer.Parent then
+
+			return false
+		end
+
+		--------------------------------------------------
+		-- TARGET DEAD?
+		--------------------------------------------------
+
+		if IsTargetDead() then
+
+			TeleportToTargetEnabled = false
+			RagdollWaitCount = 0
+
+			return false
+		end
+
+		--------------------------------------------------
+		-- TARGET ROOT
+		--------------------------------------------------
+
+		local targetRoot =
+			GetTargetRoot()
+
+		if not targetRoot then
+
+			task.wait(0.1)
+
+			continue
+		end
+
+		--------------------------------------------------
+		-- TARGET NOT RAGDOLLED
+		--------------------------------------------------
+
+		if not IsTargetRagdolled() then
+			return true
+		end
+
+		--------------------------------------------------
+		-- COUNT ONE RAGDOLL WAIT
+		--------------------------------------------------
+
+		RagdollWaitCount += 1
+
+		--------------------------------------------------
+		-- 5 RAGDOLL WAITS
+		--------------------------------------------------
+
+		if RagdollWaitCount >= MaxRagdollWaits then
+
+			Rayfield:Notify({
+				Title = "Teleport To Target",
+				Content = "Ragdoll limit reached. Waiting 10 seconds.",
+				Duration = 3
+			})
+
+			--------------------------------------------------
+			-- WAIT 10 SECONDS
+			--------------------------------------------------
+
+			task.wait(RagdollCooldown)
+
+			--------------------------------------------------
+			-- RESET COUNTER
+			--------------------------------------------------
+
+			RagdollWaitCount = 0
+
+			if not TeleportToTargetEnabled then
+				return false
+			end
+
+		else
+
+			--------------------------------------------------
+			-- KEEP CHECKING EVERY 0.1 SECONDS
+			-- WITHOUT COUNTING AGAIN
+			--------------------------------------------------
+
+			repeat
+
+				task.wait(0.1)
+
+				if not TeleportToTargetEnabled then
+					return false
+				end
+
+				if not TargetPlayer
+					or not TargetPlayer.Parent then
+
+					return false
+				end
+
+				if IsTargetDead() then
+
+					TeleportToTargetEnabled = false
+					RagdollWaitCount = 0
+
+					return false
+				end
+
+			until not IsTargetRagdolled()
+		end
+	end
+
+	return false
+end
+
+--------------------------------------------------
+-- TELEPORT LOOP
+--------------------------------------------------
+
+local function StartTeleportLoop()
+
+	if TeleportLoopRunning then
+		return
+	end
+
+	TeleportLoopRunning = true
+
+	task.spawn(function()
+
+		while TeleportToTargetEnabled do
+
+			--------------------------------------------------
+			-- TARGET STILL EXISTS?
+			--------------------------------------------------
+
+			if not TargetPlayer
+				or not TargetPlayer.Parent then
+
+				TeleportToTargetEnabled = false
+				break
+			end
+
+			--------------------------------------------------
+			-- TARGET DEAD?
+			--------------------------------------------------
+
+			if IsTargetDead() then
+
+				TeleportToTargetEnabled = false
+				RagdollWaitCount = 0
+
+				break
+			end
+
+			--------------------------------------------------
+			-- WAIT FOR UNRAGDOLL
+			--------------------------------------------------
+
+			local ready =
+				WaitUntilUnragdolled()
+
+			if not ready then
+				break
+			end
+
+			if not TeleportToTargetEnabled then
+				break
+			end
+
+			--------------------------------------------------
+			-- GET ROOTS
+			--------------------------------------------------
+
+			local localRoot =
+				GetLocalRoot()
+
+			local targetRoot =
+				GetTargetRoot()
+
+			if not localRoot
+				or not targetRoot then
+
+				task.wait(0.1)
+
+				continue
+			end
+
+			--------------------------------------------------
+			-- FINAL DEAD CHECK
+			--------------------------------------------------
+
+			if IsTargetDead() then
+
+				TeleportToTargetEnabled = false
+				RagdollWaitCount = 0
+
+				break
+			end
+
+			--------------------------------------------------
+			-- FINAL RAGDOLL CHECK
+			--------------------------------------------------
+
+			if IsTargetRagdolled() then
+
+				task.wait(0.1)
+
+				continue
+			end
+
+			--------------------------------------------------
+			-- SAVE ORIGINAL POSITION
+			--------------------------------------------------
+
+			local originalCFrame =
+				localRoot.CFrame
+
+			--------------------------------------------------
+			-- TELEPORT TO TARGET
+			--------------------------------------------------
+
+			localRoot.CFrame =
+				targetRoot.CFrame
+
+			--------------------------------------------------
+			-- WAIT 0.5 SECONDS
+			--------------------------------------------------
+
+			task.wait(0.5)
+
+			--------------------------------------------------
+			-- TELEPORT BACK
+			--------------------------------------------------
+
+			if TeleportToTargetEnabled then
+
+				local currentRoot =
+					GetLocalRoot()
+
+				if currentRoot then
+
+					currentRoot.CFrame =
+						originalCFrame
+				end
+			end
+
+			--------------------------------------------------
+			-- WAIT 0.5 SECONDS
+			--------------------------------------------------
+
+			task.wait(0.5)
+		end
+
+		TeleportLoopRunning = false
+	end)
+end
+
+--------------------------------------------------
+-- TOGGLE
+--------------------------------------------------
+
+CombatTab:CreateToggle({
+	Name = "Kill Player",
+	CurrentValue = false,
+
+	Callback = function(Value)
+
+		TeleportToTargetEnabled = Value
+
+		--------------------------------------------------
+		-- DISABLED
+		--------------------------------------------------
+
+		if not Value then
+
+			RagdollWaitCount = 0
+
+			return
+		end
+
+		--------------------------------------------------
+		-- TARGET REQUIRED
+		--------------------------------------------------
+
+		if not TargetPlayer
+			or not TargetPlayer.Parent then
+
+			TeleportToTargetEnabled = false
+			RagdollWaitCount = 0
+
+			Rayfield:Notify({
+				Title = "Teleport To Target",
+				Content = "Select a target first.",
+				Duration = 3
+			})
+
+			return
+		end
+
+		--------------------------------------------------
+		-- TARGET ALREADY DEAD
+		--------------------------------------------------
+
+		if IsTargetDead() then
+
+			TeleportToTargetEnabled = false
+			RagdollWaitCount = 0
+
+			Rayfield:Notify({
+				Title = "Teleport To Target",
+				Content = "Target is dead.",
+				Duration = 3
+			})
+
+			return
+		end
+
+		--------------------------------------------------
+		-- RESET COUNTER
+		--------------------------------------------------
+
+		RagdollWaitCount = 0
+
+		--------------------------------------------------
+		-- START LOOP
+		--------------------------------------------------
+
+		StartTeleportLoop()
+	end
+})
+
 ItemsTab:CreateToggle({
 	Name="Use Items",
 	CurrentValue=false,
