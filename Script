@@ -477,7 +477,10 @@ ItemsTab:CreateToggle({
 local Players = game:GetService("Players")
 
 local LocalPlayer = Players.LocalPlayer
-local AutoGetCrates = false
+local AutoGotoCrate = false
+local Running = false
+
+local Height = 10
 
 local function GetRoot()
 	local character = LocalPlayer.Character
@@ -488,130 +491,129 @@ local function GetRoot()
 	return character:FindFirstChild("HumanoidRootPart")
 end
 
-local function ProcessCrate(crate)
-	if not AutoGetCrates then
-		return
-	end
+local function IsCrate(crate)
+	return crate
+		and crate.Parent
+		and crate:IsA("Model")
+		and crate.Name == "Crate"
+end
 
-	if not crate:IsA("Model") or crate.Name ~= "Crate" then
-		return
+local function GetCratePosition(crate)
+	if not IsCrate(crate) then
+		return nil
 	end
-
-	local rootPart = GetRoot()
-	if not rootPart then
-		return
-	end
-
-	-- Get the crate's position
-	local crateCFrame
 
 	if crate.PrimaryPart then
-		crateCFrame = crate.PrimaryPart.CFrame
-	else
-		crateCFrame = crate:GetPivot()
+		return crate.PrimaryPart.Position
 	end
 
-	-- Teleport 10 studs underneath the crate
-	local targetPosition =
-		crateCFrame.Position - Vector3.new(0, 10, 0)
+	local success, pivot = pcall(function()
+		return crate:GetPivot()
+	end)
 
-	rootPart.CFrame =
-		CFrame.new(targetPosition) *
-		(rootPart.CFrame - rootPart.CFrame.Position)
+	if success then
+		return pivot.Position
+	end
 
-	-- Find Effects.Basic Flame Wisp
-	local effects = crate:FindFirstChild("Effects", true)
-	local basic = effects and effects:FindFirstChild("Basic")
-	local flameWisp = basic and basic:FindFirstChild("Flame Wisp")
+	return nil
+end
 
-	-- Wait until Flame Wisp is disabled
-	if flameWisp and flameWisp:IsA("ParticleEmitter") then
-		while AutoGetCrates
-			and crate.Parent
-			and flameWisp.Enabled do
+local function GetClosestCrate(cratesFolder)
+	local root = GetRoot()
 
-			task.wait(0.1)
+	if not root then
+		return nil
+	end
+
+	local closest = nil
+	local closestDistance = math.huge
+
+	for _, crate in ipairs(cratesFolder:GetChildren()) do
+		if IsCrate(crate) then
+			local position = GetCratePosition(crate)
+
+			if position then
+				local distance =
+					(root.Position - position).Magnitude
+
+				if distance < closestDistance then
+					closestDistance = distance
+					closest = crate
+				end
+			end
 		end
 	end
 
-	if not AutoGetCrates or not crate.Parent then
+	return closest
+end
+
+local function StartAutoGoto(cratesFolder)
+	if Running then
 		return
 	end
 
-	-- Find GetItemFromCrate
-	local remote = crate:FindFirstChild("GetItemFromCrate", true)
+	Running = true
 
-	if not remote then
-		warn("GetItemFromCrate not found in crate:", crate:GetFullName())
-		return
-	end
+	task.spawn(function()
 
-	if remote:IsA("RemoteEvent") then
-		remote:FireServer()
+		while AutoGotoCrate
+			and cratesFolder
+			and cratesFolder.Parent do
 
-	elseif remote:IsA("RemoteFunction") then
-		remote:InvokeServer()
-	end
+			local crate = GetClosestCrate(cratesFolder)
+
+			if crate then
+				local root = GetRoot()
+				local position = GetCratePosition(crate)
+
+				if root and position then
+					-- Teleport directly above the crate.
+					root.CFrame =
+						CFrame.new(
+							position + Vector3.new(0, Height, 0)
+						)
+				end
+			end
+
+			task.wait(0.1)
+		end
+
+		Running = false
+	end)
 end
 
 ItemsTab:CreateToggle({
-	Name = "Auto Get Crates [NOT FINSIHED]",
+	Name = "Auto goto crate",
 	CurrentValue = false,
 
 	Callback = function(Value)
 
-		AutoGetCrates = Value
+		AutoGotoCrate = Value
 
 		if not Value then
 			return
 		end
 
-		local shipments = workspace:FindFirstChild("Shipments")
-		local cratesFolder = shipments and shipments:FindFirstChild("Crates")
+		local shipments =
+			workspace:FindFirstChild("Shipments")
+
+		local cratesFolder =
+			shipments
+			and shipments:FindFirstChild("Crates")
 
 		if not cratesFolder then
+			AutoGotoCrate = false
+
 			Rayfield:Notify({
-				Title = "Auto Get Crates",
+				Title = "Auto goto crate",
 				Content = "Workspace.Shipments.Crates not found.",
 				Duration = 5
 			})
+
 			return
 		end
 
-		-- Process crates that already exist
-		for _, crate in ipairs(cratesFolder:GetChildren()) do
-			task.spawn(function()
-				ProcessCrate(crate)
-			end)
-		end
-
-		-- Process newly spawned crates
-		task.spawn(function()
-
-			while AutoGetCrates and cratesFolder.Parent do
-
-				local connection
-
-				connection = cratesFolder.ChildAdded:Connect(function(crate)
-					if AutoGetCrates
-						and crate:IsA("Model")
-						and crate.Name == "Crate" then
-
-						task.spawn(function()
-							ProcessCrate(crate)
-						end)
-					end
-				end)
-
-				repeat
-					task.wait(1)
-				until not AutoGetCrates or not cratesFolder.Parent
-
-				if connection then
-					connection:Disconnect()
-				end
-			end
-		end)
+		StartAutoGoto(cratesFolder)
 	end
 })
 
