@@ -445,7 +445,7 @@ local TeleportLoopRunning = false
 -- Ragdoll tracking
 local RagdollWaitCount = 0
 local MaxRagdollWaits = 5
-local RagdollCooldown = 10
+local RagdollCooldown = 15
 
 -- Target death/respawn connection
 local TargetCharacterConnection = nil
@@ -883,7 +883,7 @@ local function WaitUntilUnragdolled()
 
 			Rayfield:Notify({
 				Title = "Teleport To Target",
-				Content = "Ragdoll limit reached. Waiting 10 seconds.",
+				Content = "Ragdoll limit reached. Waiting 15 seconds.",
 				Duration = 3
 			})
 
