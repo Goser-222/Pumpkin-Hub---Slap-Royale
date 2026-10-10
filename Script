@@ -3888,7 +3888,7 @@ end
 --==================================================
 
 ItemsTab:CreateToggle({
-	Name = "Get all items",
+	Name = "Get all items (Use anti acid with this can clip into ground)",
 	CurrentValue = false,
 
 	Callback = function(v)
