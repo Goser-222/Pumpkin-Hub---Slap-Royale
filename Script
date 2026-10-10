@@ -2291,19 +2291,95 @@ task.spawn(function()
 	end
 end)
 
+
+local function GetPermanentItemsCountdown()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+
+    local countdownGui = playerGui:FindFirstChild("Countdown")
+    if not countdownGui then return nil end
+
+    local countdownFrame = countdownGui:FindFirstChild("Countdown")
+    if not countdownFrame then return nil end
+
+    local timeLeft = countdownFrame:FindFirstChild("TimeLeft")
+    if not timeLeft then return nil end
+
+    local text = timeLeft.Text
+    local number = string.match(text, "%d+%.?%d*")
+
+    return number and tonumber(number) or nil
+end
+
 task.spawn(function()
-	while true do
-		if AutoUseEnabled then
-			for _,tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
-				if AutoUseList[tool.Name] then
-					tool.Parent=Char
-					task.wait(0.5)
-					pcall(function()tool:Activate()end)
-				end
-			end
-		end
-		task.wait(0.1)
-	end
+    local itemsAllowed = false
+    local reachedOne = false
+    local notified = false
+
+    while true do
+        local success, countdown = pcall(GetPermanentItemsCountdown)
+
+        if not success or countdown == nil then
+            itemsAllowed = false
+            reachedOne = false
+            notified = false
+
+        elseif countdown > 1 then
+            itemsAllowed = false
+            reachedOne = false
+            notified = false
+
+        elseif not reachedOne then
+            reachedOne = true
+            itemsAllowed = false
+
+            task.wait(1)
+
+            local checkOK, current = pcall(GetPermanentItemsCountdown)
+
+            if checkOK and current ~= nil and current <= 1 then
+                itemsAllowed = true
+
+                if not notified then
+                    notified = true
+
+                    Rayfield:Notify({
+                        Title = "Use Permanent Items",
+                        Content = "Using All Permanent Items",
+                        Duration = 5
+                    })
+                end
+            else
+                reachedOne = false
+            end
+        end
+
+        if AutoUseEnabled and itemsAllowed then
+            local character = LocalPlayer.Character
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+
+            if character and backpack then
+                for _, tool in ipairs(backpack:GetChildren()) do
+                    if not AutoUseEnabled or not itemsAllowed then
+                        break
+                    end
+
+                    if AutoUseList and AutoUseList[tool.Name] then
+                        tool.Parent = character
+                        task.wait(0.5)
+
+                        if AutoUseEnabled and itemsAllowed then
+                            pcall(function()
+                                tool:Activate()
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+
+        task.wait(0.2)
+    end
 end)
 
 --==================================================
