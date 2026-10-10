@@ -1290,7 +1290,6 @@ local LocalPlayer = Players.LocalPlayer
 local AutoGotoCrate = false
 local Running = false
 
-local Height = 10
 
 local function GetRoot()
 	local character = LocalPlayer.Character
@@ -1357,7 +1356,37 @@ local function GetClosestCrate(cratesFolder)
 	return closest
 end
 
+local function IsCrateBroken(crate)
+	if not IsCrate(crate) then
+		return true
+	end
+
+	-- Some crate implementations expose health as an attribute or value.
+	local healthAttribute = crate:GetAttribute("Health")
+	if typeof(healthAttribute) == "number" and healthAttribute <= 0 then
+		return true
+	end
+
+	local healthValue = crate:FindFirstChild("Health", true)
+	if healthValue and (healthValue:IsA("NumberValue") or healthValue:IsA("IntValue")) then
+		if healthValue.Value <= 0 then
+			return true
+		end
+	end
+
+	-- If the crate's parts have been removed, treat it as broken.
+	for _, descendant in ipairs(crate:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			return false
+		end
+	end
+
+	return true
+end
+
 local function StartAutoGoto(cratesFolder)
+	-- Poll every 0.1 seconds. Teleport only once per target, then wait
+	-- until that crate is broken/removed before selecting another one.
 	if Running then
 		return
 	end
@@ -1365,23 +1394,19 @@ local function StartAutoGoto(cratesFolder)
 	Running = true
 
 	task.spawn(function()
+		local targetCrate = nil
 
-		while AutoGotoCrate
-			and cratesFolder
-			and cratesFolder.Parent do
+		while AutoGotoCrate and cratesFolder and cratesFolder.Parent do
+			if not targetCrate or IsCrateBroken(targetCrate) then
+				targetCrate = GetClosestCrate(cratesFolder)
 
-			local crate = GetClosestCrate(cratesFolder)
+				if targetCrate then
+					local root = GetRoot()
+					local position = GetCratePosition(targetCrate)
 
-			if crate then
-				local root = GetRoot()
-				local position = GetCratePosition(crate)
-
-				if root and position then
-					-- Teleport directly above the crate.
-					root.CFrame =
-						CFrame.new(
-							position + Vector3.new(0, Height, 0)
-						)
+					if root and position then
+						root.CFrame = CFrame.new(position + Vector3.new(0, 10, 10))
+					end
 				end
 			end
 
