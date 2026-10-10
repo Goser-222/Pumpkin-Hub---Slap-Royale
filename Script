@@ -228,6 +228,7 @@ local RemoveZoneEnabled=false
 local DeleteSeatsEnabled=false
 local AutoUseEnabled=false
 local GetItemsEnabled=false
+local GetItemsMode = "Slow"
 local AutoPickupEnabled=false
 local BombPicked=false
 local PlayerESPEnabled=false
@@ -1164,15 +1165,33 @@ ItemsTab:CreateToggle({
 })
 
 ItemsTab:CreateToggle({
-	Name = "Get Items",
+	Name = "Get Items (Slow)(Turn it off every 7 tool and wait like 5 sec to avoid kick!)",
 	CurrentValue = false,
 	Callback = function(v)
-		GetItemsEnabled = v
-
 		if v then
+			GetItemsMode = "Slow"
+			GetItemsEnabled = true
 			-- Disable Get All Items
 			GetAllItemsEnabled = false
 			SetGetAllItemsNoclip(false)
+		elseif GetItemsMode == "Slow" then
+			GetItemsEnabled = false
+		end
+	end
+})
+
+ItemsTab:CreateToggle({
+	Name = "Get Items (Fast)",
+	CurrentValue = false,
+	Callback = function(v)
+		if v then
+			GetItemsMode = "Fast"
+			GetItemsEnabled = true
+			-- Disable Get All Items
+			GetAllItemsEnabled = false
+			SetGetAllItemsNoclip(false)
+		elseif GetItemsMode == "Fast" then
+			GetItemsEnabled = false
 		end
 	end
 })
@@ -2423,8 +2442,8 @@ local ContinueAfterBusRunning = false
 local CollectionRunning = false
 local CollectionCooldown = false
 
--- First collection = 4
--- Every collection after = 7
+-- Fast: first collection = 4, then 7
+-- Slow: first collection = 2, then 4
 local CollectionCycle = 0
 
 --==================================================
@@ -2762,7 +2781,7 @@ local function TPWaitLookPickup(tool)
 		)
 	end
 
-	task.wait(0.25)
+	task.wait(GetItemsMode == "Fast" and 0.4 or 1)
 
 	if not GetItemsEnabled then
 		return false
@@ -2787,7 +2806,7 @@ local function TPWaitLookPickup(tool)
 
 	local success = Pickup(handle)
 
-	task.wait(0.25)
+	task.wait(GetItemsMode == "Fast" and 0.2 or 0.5)
 
 	return success
 end
@@ -3189,10 +3208,10 @@ local function StartBusCollection()
 
 		local amount
 
-		if CollectionCycle == 0 then
-			amount = 4
+		if GetItemsMode == "Fast" then
+			amount = CollectionCycle == 0 and 4 or 7
 		else
-			amount = 7
+			amount = CollectionCycle == 0 and 2 or 4
 		end
 
 		local picked =
@@ -3202,11 +3221,10 @@ local function StartBusCollection()
 
 			CollectionCycle += 1
 
-			-- Always wait 5 seconds after
-			-- the collection finishes.
+			-- Wait 1 second after the collection finishes.
 			CollectionCooldown = true
 
-			task.wait(5)
+			task.wait(1)
 
 			CollectionCooldown = false
 		end
@@ -3304,13 +3322,8 @@ end)
 --==================================================
 -- MAIN COLLECTION LOOP
 --
--- 4 ITEMS
--- WAIT 5 SEC
--- 7 ITEMS
--- WAIT 5 SEC
--- 7 ITEMS
--- WAIT 5 SEC
--- REPEAT
+-- Fast: 4 items first, then 7; Slow: 2 items first, then 4
+-- Wait 1 second after each collection
 --==================================================
 
 task.spawn(function()
@@ -3327,10 +3340,10 @@ task.spawn(function()
 
 			local amount
 
-			if CollectionCycle == 0 then
-				amount = 4
+			if GetItemsMode == "Fast" then
+				amount = CollectionCycle == 0 and 4 or 7
 			else
-				amount = 7
+				amount = CollectionCycle == 0 and 2 or 4
 			end
 
 			local picked =
@@ -3340,10 +3353,10 @@ task.spawn(function()
 
 				CollectionCycle += 1
 
-				-- 5 second cooldown after every collection.
+				-- 1 second cooldown after every collection.
 				CollectionCooldown = true
 
-				task.wait(5)
+				task.wait(1)
 
 				CollectionCooldown = false
 			end
