@@ -361,10 +361,10 @@ CombatTab:CreateSlider({
 })
 
 --==================================================
--- SAVE BUTTON STATES (VISUAL ONLY ON RESTORE)
+-- SAVE BUTTON STATES AND RESTORE FEATURES
 -- Turning "Save Script Settings" ON takes one snapshot.
--- Restored buttons are shown as ON/OFF without starting
--- their associated features.
+-- On the next script launch, saved ON toggles also run
+-- their feature callbacks and enable those features.
 --==================================================
 
 local HttpService = game:GetService("HttpService")
@@ -379,11 +379,11 @@ local function CreateSavedToggle(tab, config)
 	SavedButtonStates[toggleName] = config.CurrentValue == true
 
 	config.Callback = function(value)
-		if RestoringSavedButtons then
-			return
+		-- Do not change the saved snapshot during restoration,
+		-- but always run the callback so saved ON features enable.
+		if not RestoringSavedButtons then
+			SavedButtonStates[toggleName] = value == true
 		end
-
-		SavedButtonStates[toggleName] = value == true
 
 		if originalCallback then
 			originalCallback(value)
@@ -4030,8 +4030,8 @@ OtherTab:CreateToggle({
 	end
 })
 
--- Restore saved button appearances only. The callback wrapper
--- suppresses feature callbacks so restored ON buttons do not run.
+-- Restore saved button states. Setting an ON toggle also runs its
+-- callback, so the corresponding feature is enabled on startup.
 task.spawn(function()
 	task.wait(0.5)
 
@@ -4073,7 +4073,7 @@ task.spawn(function()
 
 	Rayfield:Notify({
 		Title = "Saved Button States",
-		Content = "Restored button appearances only; features were not started.",
+		Content = "Restored saved toggles and enabled their features.",
 		Duration = 5
 	})
 end)
