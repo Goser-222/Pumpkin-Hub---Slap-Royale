@@ -2202,50 +2202,52 @@ CreateSavedToggle(SafetyTab, {
 })
 
 local GoUnderMapTeleportedDown = false
+local GoUnderMapToggleWasOn = false
 
 CreateSavedToggle(SafetyTab, {
 	Name = "Go Under Map (Use Anti Acid with this for it to not get you killed)",
 	CurrentValue = false,
 	Callback = function(Value)
-
 		local Players = game:GetService("Players")
 		local LocalPlayer = Players.LocalPlayer
 
-		-- 2 second cooldown
-		if _G.GoUnderMapCooldown then
-			Rayfield:Notify({
-				Title = "Go Under Map",
-				Content = "Teleport is on cooldown.",
-				Duration = 2
-			})
+		-- Ignore duplicate callbacks (including saved-settings UI restoration).
+		-- The return-to-terrain action is allowed only on a real ON -> OFF transition.
+		if Value == GoUnderMapToggleWasOn then
 			return
 		end
 
-		local character = LocalPlayer.Character
-			or LocalPlayer.CharacterAdded:Wait()
-
-		local rootPart = character:FindFirstChild("HumanoidRootPart")
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-
-		if not rootPart or not humanoid then
-			Rayfield:Notify({
-				Title = "Go Under Map",
-				Content = "Character not ready.",
-				Duration = 5
-			})
-			return
-		end
-
-		_G.GoUnderMapCooldown = true
+		local wasOn = GoUnderMapToggleWasOn
+		GoUnderMapToggleWasOn = Value
 
 		if Value then
-			-- ==========================================
-			-- ON: TELEPORT 30 STUDS DOWN
-			-- ==========================================
+			local character = LocalPlayer.Character
+				or LocalPlayer.CharacterAdded:Wait()
+			local rootPart = character:FindFirstChild("HumanoidRootPart")
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
 
-			rootPart.CFrame =
-				rootPart.CFrame + Vector3.new(0, -30, 0)
+			if not rootPart or not humanoid then
+				GoUnderMapToggleWasOn = false
+				Rayfield:Notify({
+					Title = "Go Under Map",
+					Content = "Character not ready.",
+					Duration = 5
+				})
+				return
+			end
 
+			if _G.GoUnderMapCooldown then
+				GoUnderMapToggleWasOn = false
+				Rayfield:Notify({
+					Title = "Go Under Map",
+					Content = "Teleport is on cooldown.",
+					Duration = 2
+				})
+				return
+			end
+
+			_G.GoUnderMapCooldown = true
+			rootPart.CFrame = rootPart.CFrame + Vector3.new(0, -30, 0)
 			GoUnderMapTeleportedDown = true
 
 			Rayfield:Notify({
@@ -2254,89 +2256,76 @@ CreateSavedToggle(SafetyTab, {
 				Duration = 3
 			})
 
-		else
-			-- Only teleport back up if this toggle previously teleported us down.
-			if not GoUnderMapTeleportedDown then
+			task.delay(2, function()
 				_G.GoUnderMapCooldown = false
-				return
-			end
-
-			-- ==========================================
-			-- OFF: FIND TOP OF TERRAIN
-			-- ==========================================
-
-			local terrain = workspace:FindFirstChildOfClass("Terrain")
-
-			if not terrain then
-				_G.GoUnderMapCooldown = false
-
-				Rayfield:Notify({
-					Title = "Go Under Map",
-					Content = "Terrain not found.",
-					Duration = 5
-				})
-				return
-			end
-
-			-- Start high above the player and raycast DOWN.
-			-- This finds the TOP surface of the terrain.
-			local rayOrigin =
-				rootPart.Position + Vector3.new(0, 1000, 0)
-
-			local rayDirection =
-				Vector3.new(0, -2000, 0)
-
-			local rayParams = RaycastParams.new()
-			rayParams.FilterType = Enum.RaycastFilterType.Include
-			rayParams.FilterDescendantsInstances = {
-				terrain
-			}
-			rayParams.IgnoreWater = true
-
-			local rayResult = workspace:Raycast(
-				rayOrigin,
-				rayDirection,
-				rayParams
-			)
-
-			if not rayResult then
-				_G.GoUnderMapCooldown = false
-
-				Rayfield:Notify({
-					Title = "Go Under Map",
-					Content = "Could not find the top of the terrain.",
-					Duration = 5
-				})
-				return
-			end
-
-			-- Character height
-			local halfHeight = rootPart.Size.Y / 2
-
-			-- Put the HumanoidRootPart above the terrain.
-			local targetPosition =
-				rayResult.Position
-				+ Vector3.new(0, halfHeight + 2, 0)
-
-			-- Preserve rotation
-			local currentRotation =
-				rootPart.CFrame - rootPart.CFrame.Position
-
-			rootPart.CFrame =
-				CFrame.new(targetPosition) * currentRotation
-
-			GoUnderMapTeleportedDown = false
-
-			Rayfield:Notify({
-				Title = "Go Under Map",
-				Content = "Teleported on top of the terrain.",
-				Duration = 3
-			})
+			end)
+			return
 		end
 
-		-- ==========================================
-		-- 2 SECOND COOLDOWN
-		-- ==========================================
+		-- OFF transition: only continue if it really was ON and this toggle
+		-- actually teleported the character down during this run.
+		if not wasOn or not GoUnderMapTeleportedDown then
+			return
+		end
+
+		if _G.GoUnderMapCooldown then
+			-- Keep the state marked as down so the user can toggle OFF again
+			-- after cooldown; do not teleport as a side effect of restoration.
+			GoUnderMapToggleWasOn = true
+			return
+		end
+
+		local character = LocalPlayer.Character
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+		if not rootPart then
+			return
+		end
+
+		_G.GoUnderMapCooldown = true
+
+		local terrain = workspace:FindFirstChildOfClass("Terrain")
+		if not terrain then
+			_G.GoUnderMapCooldown = false
+			GoUnderMapToggleWasOn = true
+			Rayfield:Notify({
+				Title = "Go Under Map",
+				Content = "Terrain not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		local rayOrigin = rootPart.Position + Vector3.new(0, 1000, 0)
+		local rayDirection = Vector3.new(0, -2000, 0)
+		local rayParams = RaycastParams.new()
+		rayParams.FilterType = Enum.RaycastFilterType.Include
+		rayParams.FilterDescendantsInstances = { terrain }
+		rayParams.IgnoreWater = true
+
+		local rayResult = workspace:Raycast(rayOrigin, rayDirection, rayParams)
+		if not rayResult then
+			_G.GoUnderMapCooldown = false
+			GoUnderMapToggleWasOn = true
+			Rayfield:Notify({
+				Title = "Go Under Map",
+				Content = "Could not find the top of the terrain.",
+				Duration = 5
+			})
+			return
+		end
+
+		local halfHeight = rootPart.Size.Y / 2
+		local targetPosition = rayResult.Position + Vector3.new(0, halfHeight + 2, 0)
+		local currentRotation = rootPart.CFrame - rootPart.CFrame.Position
+		rootPart.CFrame = CFrame.new(targetPosition) * currentRotation
+
+		GoUnderMapTeleportedDown = false
+
+		Rayfield:Notify({
+			Title = "Go Under Map",
+			Content = "Teleported on top of the terrain.",
+			Duration = 3
+		})
 
 		task.delay(2, function()
 			_G.GoUnderMapCooldown = false
