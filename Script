@@ -360,7 +360,77 @@ CombatTab:CreateSlider({
 	end
 })
 
-CombatTab:CreateToggle({
+--==================================================
+-- SAVE BUTTON STATES (VISUAL ONLY ON RESTORE)
+-- Turning "Save Script Settings" ON takes one snapshot.
+-- Restored buttons are shown as ON/OFF without starting
+-- their associated features.
+--==================================================
+
+local HttpService = game:GetService("HttpService")
+local SavedButtonStatesFile = "PumpkinHub_ButtonStates.json"
+local SavedButtonStates = {}
+local SavedToggleButtons = {}
+local RestoringSavedButtons = false
+
+local function CreateSavedToggle(tab, config)
+	local toggleName = config.Name
+	local originalCallback = config.Callback
+	SavedButtonStates[toggleName] = config.CurrentValue == true
+
+	config.Callback = function(value)
+		if RestoringSavedButtons then
+			return
+		end
+
+		SavedButtonStates[toggleName] = value == true
+
+		if originalCallback then
+			originalCallback(value)
+		end
+	end
+
+	local button = tab:CreateToggle(config)
+	SavedToggleButtons[toggleName] = button
+	return button
+end
+
+local function SaveButtonSnapshot()
+	local snapshot = {}
+
+	for name, value in pairs(SavedButtonStates) do
+		snapshot[name] = value == true
+	end
+
+	local ok, encoded = pcall(function()
+		return HttpService:JSONEncode(snapshot)
+	end)
+
+	if not ok then
+		Rayfield:Notify({
+			Title = "Save Script Settings",
+			Content = "Could not encode button settings.",
+			Duration = 4
+		})
+		return
+	end
+
+	local writeOK = pcall(function()
+		if type(writefile) ~= "function" then
+			error("writefile is not available")
+		end
+		writefile(SavedButtonStatesFile, encoded)
+	end)
+
+	Rayfield:Notify({
+		Title = "Save Script Settings",
+		Content = writeOK and "Saved the current button states." or
+			"Saving requires executor file-write support.",
+		Duration = 5
+	})
+end
+
+CreateSavedToggle(CombatTab, {
 	Name="Slap Aura",
 	CurrentValue=false,
 	Callback=function(v)
@@ -376,7 +446,7 @@ UIS.InputBegan:Connect(function(input, gp)
 	end
 end)
 
-CombatTab:CreateToggle({
+CreateSavedToggle(CombatTab, {
 	Name="Auto Win",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1086,7 +1156,7 @@ end
 -- TOGGLE
 --------------------------------------------------
 
-CombatTab:CreateToggle({
+CreateSavedToggle(CombatTab, {
 	Name = "Kill Player (Can cause kicks)",
 	CurrentValue = false,
 
@@ -1156,7 +1226,7 @@ CombatTab:CreateToggle({
 	end
 })
 
-ItemsTab:CreateToggle({
+CreateSavedToggle(ItemsTab, {
 	Name="Use Items",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1164,39 +1234,39 @@ ItemsTab:CreateToggle({
 	end
 })
 
-ItemsTab:CreateToggle({
-	Name = "Get Items (Slow)(Turn it off every 7 tool and wait like 5 sec to avoid kick!)",
-	CurrentValue = false,
-	Callback = function(v)
-		if v then
-			GetItemsMode = "Slow"
-			GetItemsEnabled = true
-			-- Disable Get All Items
-			GetAllItemsEnabled = false
-			SetGetAllItemsNoclip(false)
-		elseif GetItemsMode == "Slow" then
-			GetItemsEnabled = false
+-- Choose the collection speed separately from enabling collection.
+ItemsTab:CreateDropdown({
+	Name = "Get Items Speed",
+	Options = {"Slow", "Fast"},
+	CurrentOption = {"Slow"},
+	MultipleOptions = false,
+	Callback = function(option)
+		local selectedMode = option
+		if type(option) == "table" then
+			selectedMode = option[1]
+		end
+		if selectedMode == "Slow" or selectedMode == "Fast" then
+			GetItemsMode = selectedMode
 		end
 	end
 })
 
-ItemsTab:CreateToggle({
-	Name = "Get Items (Fast)",
+CreateSavedToggle(ItemsTab, {
+	Name = "Get Items",
 	CurrentValue = false,
 	Callback = function(v)
+		GetItemsEnabled = v
 		if v then
-			GetItemsMode = "Fast"
-			GetItemsEnabled = true
-			-- Disable Get All Items
 			GetAllItemsEnabled = false
 			SetGetAllItemsNoclip(false)
-		elseif GetItemsMode == "Fast" then
-			GetItemsEnabled = false
+		else
+			CollectionRunning = false
+			CollectionCooldown = false
 		end
 	end
 })
 
-ItemsTab:CreateToggle({
+CreateSavedToggle(ItemsTab, {
 	Name="Auto Pickup",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1206,7 +1276,7 @@ ItemsTab:CreateToggle({
 
 local AutoBombBusEnabled=false
 
-ItemsTab:CreateToggle({
+CreateSavedToggle(ItemsTab, {
 	Name="Auto Bomb Bus",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1322,7 +1392,7 @@ local function StartAutoGoto(cratesFolder)
 	end)
 end
 
-ItemsTab:CreateToggle({
+CreateSavedToggle(ItemsTab, {
 	Name = "Auto goto crate",
 	CurrentValue = false,
 
@@ -1406,7 +1476,7 @@ local function RemoveNameTag(char)
 	end
 end
 
-ESPTab:CreateToggle({
+CreateSavedToggle(ESPTab, {
 	Name = "Player ESP",
 	CurrentValue = false,
 	Callback = function(v)
@@ -1430,7 +1500,7 @@ ESPTab:CreateToggle({
 	end
 })
 
-ESPTab:CreateToggle({
+CreateSavedToggle(ESPTab, {
 	Name="Tool ESP",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1535,7 +1605,7 @@ local function RemoveGloveTag(char)
 	playerESP.Size = UDim2.new(0, 200, 0, 35)
 end
 
-ESPTab:CreateToggle({
+CreateSavedToggle(ESPTab, {
 	Name = "Glove ESP (Need Player ESP on to work)",
 	CurrentValue = false,
 	Callback = function(v)
@@ -1553,7 +1623,7 @@ ESPTab:CreateToggle({
 	end
 })
 
-OtherTab:CreateToggle({
+CreateSavedToggle(OtherTab, {
 	Name="Early Bus Jump",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1561,7 +1631,7 @@ OtherTab:CreateToggle({
 	end
 })
 
-local InstantLandingToggle = OtherTab:CreateToggle({
+local InstantLandingToggle = CreateSavedToggle(OtherTab, {
     Name = "Instant Landing",
     CurrentValue = false,
     Callback = function(v)
@@ -1569,7 +1639,7 @@ local InstantLandingToggle = OtherTab:CreateToggle({
     end
 })
 
-OtherTab:CreateToggle({
+CreateSavedToggle(OtherTab, {
 	Name="Remove Zone Effect",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1577,7 +1647,7 @@ OtherTab:CreateToggle({
 	end
 })
 
-OtherTab:CreateToggle({
+CreateSavedToggle(OtherTab, {
 	Name="Delete All Seats",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1587,7 +1657,7 @@ OtherTab:CreateToggle({
 
 local SpeedBoostEnabled=false
 
-OtherTab:CreateToggle({
+CreateSavedToggle(OtherTab, {
 	Name="Speed Boost",
 	CurrentValue=false,
 	Callback=function(v)
@@ -1597,7 +1667,7 @@ OtherTab:CreateToggle({
 
 local InfJumpEnabled = false
 
-OtherTab:CreateToggle({
+CreateSavedToggle(OtherTab, {
 	Name = "Infinite Jump",
 	CurrentValue = false,
 	Callback = function(v)
@@ -2052,7 +2122,7 @@ OtherTab:CreateButton({
 
 local SafetyTab = Window:CreateTab("Safety", 4483345998)
 
-SafetyTab:CreateToggle({
+CreateSavedToggle(SafetyTab, {
 	Name = "Anti Acid",
 	CurrentValue = false,
 	Callback = function(v)
@@ -2060,7 +2130,7 @@ SafetyTab:CreateToggle({
 	end
 })
 
-SafetyTab:CreateToggle({
+CreateSavedToggle(SafetyTab, {
 	Name = "Anti Lava",
 	CurrentValue = false,
 	Callback = function(v)
@@ -2070,7 +2140,7 @@ SafetyTab:CreateToggle({
 
 local AntiCubeOfDeathEnabled = false
 
-SafetyTab:CreateToggle({
+CreateSavedToggle(SafetyTab, {
 	Name = "Anti Cube of Death",
 	CurrentValue = false,
 	Callback = function(v)
@@ -2098,7 +2168,7 @@ task.spawn(function()
 	end
 end)
 
-SafetyTab:CreateToggle({
+CreateSavedToggle(SafetyTab, {
 	Name = "Anti Knockback",
 	CurrentValue = false,
 	Callback = function(v)
@@ -2106,7 +2176,7 @@ SafetyTab:CreateToggle({
 	end
 })
 
-SafetyTab:CreateToggle({
+CreateSavedToggle(SafetyTab, {
 	Name = "Go Under Map (Use Anti Acid with this for it to not get you killed)",
 	CurrentValue = false,
 	Callback = function(Value)
@@ -2976,7 +3046,7 @@ end
 -- CONTINUE ITEM COLLECTION AFTER BUS
 --==================================================
 
-ItemsTab:CreateToggle({
+CreateSavedToggle(ItemsTab, {
 	Name = "Continue Item Collection after bus",
 	CurrentValue = false,
 
@@ -3221,10 +3291,10 @@ local function StartBusCollection()
 
 			CollectionCycle += 1
 
-			-- Wait 1 second after the collection finishes.
+			-- Mode-specific cooldown after the collection finishes.
 			CollectionCooldown = true
 
-			task.wait(1)
+			task.wait(GetItemsMode == "Fast" and 5 or 8)
 
 			CollectionCooldown = false
 		end
@@ -3323,7 +3393,7 @@ end)
 -- MAIN COLLECTION LOOP
 --
 -- Fast: 4 items first, then 7; Slow: 2 items first, then 4
--- Wait 1 second after each collection
+-- Cooldown after each collection: Fast = 5 seconds, Slow = 8 seconds
 --==================================================
 
 task.spawn(function()
@@ -3353,10 +3423,10 @@ task.spawn(function()
 
 				CollectionCycle += 1
 
-				-- 1 second cooldown after every collection.
+				-- Mode-specific cooldown after every collection.
 				CollectionCooldown = true
 
-				task.wait(1)
+				task.wait(GetItemsMode == "Fast" and 5 or 8)
 
 				CollectionCooldown = false
 			end
@@ -3905,7 +3975,7 @@ end
 -- TOGGLE
 --==================================================
 
-ItemsTab:CreateToggle({
+CreateSavedToggle(ItemsTab, {
 	Name = "Get all items (Use anti acid with this can clip into ground)",
 	CurrentValue = false,
 
@@ -3942,4 +4012,68 @@ lp.CharacterAdded:Connect(function()
 	if GetAllItemsEnabled then
 		SetGetAllItemsNoclip(true)
 	end
+end)
+
+
+--==================================================
+-- SAVE SCRIPT SETTINGS BUTTON
+--==================================================
+
+ItemsTab:CreateToggle({
+	Name = "Save Script Settings",
+	CurrentValue = false,
+	Callback = function(value)
+		if value then
+			-- Save once, at the moment this toggle is turned ON.
+			SaveButtonSnapshot()
+		end
+	end
+})
+
+-- Restore saved button appearances only. The callback wrapper
+-- suppresses feature callbacks so restored ON buttons do not run.
+task.spawn(function()
+	task.wait(0.5)
+
+	local readOK, encoded = pcall(function()
+		if type(isfile) == "function" and not isfile(SavedButtonStatesFile) then
+			return nil
+		end
+		if type(readfile) ~= "function" then
+			return nil
+		end
+		return readfile(SavedButtonStatesFile)
+	end)
+
+	if not readOK or not encoded or encoded == "" then
+		return
+	end
+
+	local decodeOK, snapshot = pcall(function()
+		return HttpService:JSONDecode(encoded)
+	end)
+
+	if not decodeOK or type(snapshot) ~= "table" then
+		return
+	end
+
+	RestoringSavedButtons = true
+
+	for name, value in pairs(snapshot) do
+		local button = SavedToggleButtons[name]
+		if button and type(value) == "boolean" then
+			pcall(function()
+				button:Set(value)
+			end)
+			SavedButtonStates[name] = value
+		end
+	end
+
+	RestoringSavedButtons = false
+
+	Rayfield:Notify({
+		Title = "Saved Button States",
+		Content = "Restored button appearances only; features were not started.",
+		Duration = 5
+	})
 end)
