@@ -4019,7 +4019,7 @@ end)
 -- SAVE SCRIPT SETTINGS BUTTON
 --==================================================
 
-ItemsTab:CreateToggle({
+OtherTab:CreateToggle({
 	Name = "Save Script Settings",
 	CurrentValue = false,
 	Callback = function(value)
