@@ -1405,7 +1405,7 @@ local function StartAutoGoto(cratesFolder)
 					local position = GetCratePosition(targetCrate)
 
 					if root and position then
-						root.CFrame = CFrame.new(position + Vector3.new(0, 10, 10))
+						root.CFrame = CFrame.new(position + Vector3.new(0, 10, 0))
 					end
 				end
 			end
@@ -2201,6 +2201,8 @@ CreateSavedToggle(SafetyTab, {
 	end
 })
 
+local GoUnderMapTeleportedDown = false
+
 CreateSavedToggle(SafetyTab, {
 	Name = "Go Under Map (Use Anti Acid with this for it to not get you killed)",
 	CurrentValue = false,
@@ -2244,6 +2246,8 @@ CreateSavedToggle(SafetyTab, {
 			rootPart.CFrame =
 				rootPart.CFrame + Vector3.new(0, -30, 0)
 
+			GoUnderMapTeleportedDown = true
+
 			Rayfield:Notify({
 				Title = "Go Under Map",
 				Content = "Teleported 30 studs down.",
@@ -2251,6 +2255,12 @@ CreateSavedToggle(SafetyTab, {
 			})
 
 		else
+			-- Only teleport back up if this toggle previously teleported us down.
+			if not GoUnderMapTeleportedDown then
+				_G.GoUnderMapCooldown = false
+				return
+			end
+
 			-- ==========================================
 			-- OFF: FIND TOP OF TERRAIN
 			-- ==========================================
@@ -2314,6 +2324,8 @@ CreateSavedToggle(SafetyTab, {
 
 			rootPart.CFrame =
 				CFrame.new(targetPosition) * currentRotation
+
+			GoUnderMapTeleportedDown = false
 
 			Rayfield:Notify({
 				Title = "Go Under Map",
