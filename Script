@@ -882,7 +882,7 @@ local function WaitUntilUnragdolled()
 		if RagdollWaitCount >= MaxRagdollWaits then
 
 			Rayfield:Notify({
-				Title = "Teleport To Target",
+				Title = "Kill Player",
 				Content = "Ragdoll limit reached. Waiting 15 seconds.",
 				Duration = 3
 			})
@@ -1086,7 +1086,7 @@ end
 --------------------------------------------------
 
 CombatTab:CreateToggle({
-	Name = "Kill Player",
+	Name = "Kill Player (Can cause kicks)",
 	CurrentValue = false,
 
 	Callback = function(Value)
@@ -1115,7 +1115,7 @@ CombatTab:CreateToggle({
 			RagdollWaitCount = 0
 
 			Rayfield:Notify({
-				Title = "Teleport To Target",
+				Title = "Kill Player",
 				Content = "Select a target first.",
 				Duration = 3
 			})
@@ -2292,6 +2292,7 @@ task.spawn(function()
 end)
 
 
+
 local function GetPermanentItemsCountdown()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return nil end
@@ -2305,9 +2306,7 @@ local function GetPermanentItemsCountdown()
     local timeLeft = countdownFrame:FindFirstChild("TimeLeft")
     if not timeLeft then return nil end
 
-    local text = timeLeft.Text
-    local number = string.match(text, "%d+%.?%d*")
-
+    local number = string.match(timeLeft.Text, "%d+%.?%d*")
     return number and tonumber(number) or nil
 end
 
@@ -2339,24 +2338,16 @@ task.spawn(function()
 
             if checkOK and current ~= nil and current <= 1 then
                 itemsAllowed = true
-
-                if not notified then
-                    notified = true
-
-                    Rayfield:Notify({
-                        Title = "Use Permanent Items",
-                        Content = "Using All Permanent Items",
-                        Duration = 5
-                    })
-                end
             else
                 reachedOne = false
             end
         end
 
+        -- Only use items when the Use Items toggle is enabled.
         if AutoUseEnabled and itemsAllowed then
             local character = LocalPlayer.Character
             local backpack = LocalPlayer:FindFirstChild("Backpack")
+            local usedCount = 0
 
             if character and backpack then
                 for _, tool in ipairs(backpack:GetChildren()) do
@@ -2365,16 +2356,35 @@ task.spawn(function()
                     end
 
                     if AutoUseList and AutoUseList[tool.Name] then
-                        tool.Parent = character
-                        task.wait(0.5)
+                        local equipped = pcall(function()
+                            tool.Parent = character
+                        end)
 
-                        if AutoUseEnabled and itemsAllowed then
-                            pcall(function()
-                                tool:Activate()
-                            end)
+                        if equipped then
+                            task.wait(0.5)
+
+                            if AutoUseEnabled and itemsAllowed then
+                                local activated = pcall(function()
+                                    tool:Activate()
+                                end)
+
+                                if activated then
+                                    usedCount = usedCount + 1
+                                end
+                            end
                         end
                     end
                 end
+            end
+
+            if usedCount > 0 and not notified then
+                notified = true
+
+                Rayfield:Notify({
+                    Title = "Use Permanent Items",
+                    Content = "Used " .. usedCount .. " item(s)",
+                    Duration = 5
+                })
             end
         end
 
