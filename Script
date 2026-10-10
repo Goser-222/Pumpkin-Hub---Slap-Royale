@@ -1542,12 +1542,12 @@ OtherTab:CreateToggle({
 	end
 })
 
-OtherTab:CreateToggle({
-	Name="Instant Landing",
-	CurrentValue=false,
-	Callback=function(v)
-		ILEnabled=v
-	end
+local InstantLandingToggle = OtherTab:CreateToggle({
+    Name = "Instant Landing",
+    CurrentValue = false,
+    Callback = function(v)
+        ILEnabled = v
+    end
 })
 
 OtherTab:CreateToggle({
@@ -2964,6 +2964,11 @@ ItemsTab:CreateToggle({
 	Callback = function(v)
 
 		ContinueAfterBusEnabled = v
+
+if v then
+    ILEnabled = false
+    InstantLandingToggle:Set(false)
+end
 
 		if not v then
 
