@@ -430,21 +430,40 @@ local function SaveButtonSnapshot()
 	})
 end
 
-CreateSavedToggle(CombatTab, {
-	Name="Slap Aura",
-	CurrentValue=false,
-	Callback=function(v)
-		_G.SlapAura=v
-	end
+
+--==================================================
+-- SLAP AURA + CHANGEABLE KEYBIND
+--==================================================
+
+_G.SlapAura = false
+
+local SlapAuraButton = CreateSavedToggle(CombatTab, {
+    Name = "Slap Aura",
+    CurrentValue = false,
+
+    Callback = function(enabled)
+        _G.SlapAura = enabled
+
+        Rayfield:Notify({
+            Title = "Slap Aura",
+            Content = enabled
+                and "Slap Aura toggled ON"
+                or "Slap Aura toggled OFF",
+            Duration = 3
+        })
+    end
 })
 
-UIS.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.KeyCode == SlapAuraKey then
-		SlapAuraToggle = not SlapAuraToggle
-		SlapAuraButton:Set(SlapAuraToggle)
-	end
-end)
+CombatTab:CreateKeybind({
+    Name = "Slap Aura Toggle",
+    CurrentKeybind = "E",
+    HoldToInteract = false,
+    Flag = "SlapAuraToggleKey",
+
+    Callback = function()
+        SlapAuraButton:Set(not _G.SlapAura)
+    end
+})
 
 CreateSavedToggle(CombatTab, {
 	Name="Auto Win",
