@@ -344,10 +344,10 @@ Rayfield:Notify({
 	Duration = 7,
 })
 
-local CombatTab=Window:CreateTab("Combat",4483345998)
-local ItemsTab=Window:CreateTab("Items",4483345998)
-local ESPTab=Window:CreateTab("ESP",4483345998)
-local OtherTab=Window:CreateTab("Other",4483345998)
+local CombatTab=Window:CreateTab("Combat","swords")
+local ItemsTab=Window:CreateTab("Items","package")
+local ESPTab=Window:CreateTab("ESP","eye")
+local OtherTab=Window:CreateTab("Other","settings")
 
 CombatTab:CreateSlider({
 	Name="Hitbox Size (Others + NPCs)",
@@ -2145,7 +2145,7 @@ OtherTab:CreateButton({
 	end
 })
 
-local SafetyTab = Window:CreateTab("Safety", 4483345998)
+local SafetyTab = Window:CreateTab("Safety", "shield-check")
 
 CreateSavedToggle(SafetyTab, {
 	Name = "Anti Acid",
