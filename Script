@@ -2896,7 +2896,7 @@ local function TPWaitLookPickup(tool)
 		)
 	end
 
-	task.wait(GetItemsMode == "Fast" and 0.4 or 1)
+	task.wait(GetItemsMode == "Fast" and 0.3 or 1)
 
 	if not GetItemsEnabled then
 		return false
@@ -3324,7 +3324,7 @@ local function StartBusCollection()
 		local amount
 
 		if GetItemsMode == "Fast" then
-			amount = CollectionCycle == 0 and 4 or 7
+			amount = CollectionCycle == 0 and 4 or 8
 		else
 			amount = CollectionCycle == 0 and 2 or 4
 		end
@@ -3456,7 +3456,7 @@ task.spawn(function()
 			local amount
 
 			if GetItemsMode == "Fast" then
-				amount = CollectionCycle == 0 and 4 or 7
+				amount = CollectionCycle == 0 and 5 or 8
 			else
 				amount = CollectionCycle == 0 and 2 or 4
 			end
