@@ -465,6 +465,27 @@ CombatTab:CreateKeybind({
     end
 })
 
+local SlapAuraMode = "Slow"
+
+CombatTab:CreateDropdown({
+    Name = "Slap Aura Speed",
+    Options = {"Safe", "Fast (May get you kicked)"},
+    CurrentOption = {"Safe"},
+    MultipleOptions = false,
+
+    Callback = function(option)
+        local selectedMode = option
+
+        if type(option) == "table" then
+            selectedMode = option[1]
+        end
+
+        if selectedMode == "Safe" or selectedMode == "Fast (May get you kicked)" then
+            SlapAuraMode = selectedMode
+        end
+    end
+})
+
 CreateSavedToggle(CombatTab, {
 	Name="Auto Win",
 	CurrentValue=false,
@@ -3559,7 +3580,9 @@ task.spawn(function()
 	while true do
 		if _G.SlapAura then
 			local now = tick()
-			if now - lastSlap >= 0.25 then
+			local slapCooldown = SlapAuraMode == "Fast (May get you kicked)" and 0.08 or 0.25
+
+if now - lastSlap >= slapCooldown then
 				local hrp = Char:FindFirstChild("HumanoidRootPart")
 				local toolEquipped = Char:FindFirstChildWhichIsA("Tool")
 
