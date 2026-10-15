@@ -2448,6 +2448,188 @@ end)
 
 
 
+
+
+
+-- ZONE CENTER PUSH
+-- Requires Rayfield and SafetyTab to already exist.
+-- Zone1 must be a BasePart or MeshPart in Workspace.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Player = Players.LocalPlayer
+
+local Enabled = false
+local ForceStrength = 1
+local CHECK_INTERVAL = 0.1
+local MAX_SPEED = 70
+
+local loopConnection
+local elapsed = 0
+local wasPushing = false
+local lastWarning = 0
+
+local function notify(title, message)
+    Rayfield:Notify({
+        Title = title,
+        Content = message,
+        Duration = 3
+    })
+end
+
+local function getZone()
+    local zone = Workspace:FindFirstChild("Zone1", true)
+
+    if zone and zone:IsA("BasePart") then
+        return zone
+    end
+
+    return nil
+end
+
+local function stopLoop()
+    if loopConnection then
+        loopConnection:Disconnect()
+        loopConnection = nil
+    end
+
+    elapsed = 0
+    wasPushing = false
+end
+
+local function pushTowardCenter(root, zone)
+    -- Direction FROM the player TO Zone1's center.
+    local offset = zone.Position - root.Position
+    local direction = Vector3.new(offset.X, 0, offset.Z)
+
+    if direction.Magnitude < 0.1 then
+        return
+    end
+
+    direction = direction.Unit
+
+    -- Capped horizontal speed.
+    local speed = math.min(ForceStrength * 0.5, MAX_SPEED)
+    local velocity = root.AssemblyLinearVelocity
+
+    root.AssemblyLinearVelocity = Vector3.new(
+        direction.X * speed,
+        velocity.Y,
+        direction.Z * speed
+    )
+end
+
+local function startLoop()
+    stopLoop()
+
+    loopConnection = RunService.Heartbeat:Connect(function(dt)
+        if not Enabled then
+            return
+        end
+
+        elapsed += dt
+        if elapsed < CHECK_INTERVAL then
+            return
+        end
+        elapsed = 0
+
+        -- Recheck Zone1 every 0.1 seconds.
+        local zone = getZone()
+
+        if not zone then
+            if os.clock() - lastWarning > 3 then
+                lastWarning = os.clock()
+                notify("Zone Center Push", "Zone1 wasn't found in Workspace.")
+            end
+            return
+        end
+
+        local character = Player.Character
+        if not character then
+            return
+        end
+
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local root = character:FindFirstChild("HumanoidRootPart")
+
+        if not humanoid or not root or humanoid.Health <= 0 then
+            return
+        end
+
+        -- Stop once the character is outside the zone.
+        local inside = character:GetAttribute("inZone") == true
+
+        if inside then
+            pushTowardCenter(root, zone)
+
+            if not wasPushing then
+                notify("Zone Center Push", "Pushing toward Zone1's center!")
+            end
+
+            wasPushing = true
+        else
+            if wasPushing then
+                notify("Zone Center Push", "Outside the zone. Push stopped.")
+            end
+
+            wasPushing = false
+        end
+    end)
+end
+
+-- Rayfield toggle
+SafetyTab:CreateToggle({
+    Name = "Zone Center Push",
+    CurrentValue = false,
+    Flag = "ZoneCenterPush",
+    Callback = function(value)
+        Enabled = value
+
+        if value then
+            if not getZone() then
+                Enabled = false
+                notify("Zone Center Push", "Couldn't find Zone1 in Workspace.")
+                return
+            end
+
+            startLoop()
+            notify("Zone Center Push", "Enabled! Force starts at 1.")
+        else
+            stopLoop()
+            notify("Zone Center Push", "Disabled.")
+        end
+    end
+})
+
+-- Rayfield force slider
+SafetyTab:CreateSlider({
+    Name = "Center Push Force",
+    Range = {1, 100},
+    Increment = 1,
+    Suffix = " Force",
+    CurrentValue = 1,
+    Flag = "ZoneCenterPushForce",
+    Callback = function(value)
+        ForceStrength = value
+    end
+})
+
+-- Handle respawning
+Player.CharacterAdded:Connect(function()
+    task.wait(1)
+
+    if Enabled then
+        startLoop()
+    end
+end)
+
+
+
+
+
+
 local function GetPermanentItemsCountdown()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return nil end
