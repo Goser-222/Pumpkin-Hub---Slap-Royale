@@ -2698,7 +2698,7 @@ task.spawn(function()
                         end)
 
                         if equipped then
-                            task.wait(0.5)
+                            task.wait(0.3)
 
                             if AutoUseEnabled and itemsAllowed then
                                 local activated = pcall(function()
@@ -3542,7 +3542,7 @@ local function StartBusCollection()
 			-- Mode-specific cooldown after the collection finishes.
 			CollectionCooldown = true
 
-			task.wait(GetItemsMode == "Fast" and 5 or 8)
+			task.wait(GetItemsMode == "Fast" and 5 or 5)
 
 			CollectionCooldown = false
 		end
