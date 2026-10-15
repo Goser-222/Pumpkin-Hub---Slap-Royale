@@ -2698,7 +2698,7 @@ task.spawn(function()
                         end)
 
                         if equipped then
-                            task.wait(0.3)
+                            task.wait(0.35)
 
                             if AutoUseEnabled and itemsAllowed then
                                 local activated = pcall(function()
