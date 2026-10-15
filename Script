@@ -3843,6 +3843,7 @@ task.spawn(function()
 				["Rubbled Remains"] = true,
 				["Shipments"] = true,
 				["Lobby"] = true,
+                ["Halloween"] = true,
 				["SoundRegions"] = true
 			}
 
