@@ -1457,6 +1457,121 @@ local function StartAutoGoto(cratesFolder)
 	end)
 end
 
+-- Use All Cube of Ice / Sphere of Fury
+-- Only one item-use task runs at a time.
+-- The next queued item starts after all tools of the current type are gone.
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local ItemUseQueue = {}
+local ItemQueueRunning = false
+
+local function FindTools(itemName)
+    local tools = {}
+    local character = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+
+    local function scan(container)
+        if not container then
+            return
+        end
+
+        for _, obj in ipairs(container:GetChildren()) do
+            if obj:IsA("Tool") and obj.Name == itemName then
+                table.insert(tools, obj)
+            end
+        end
+    end
+
+    scan(character)
+    scan(backpack)
+
+    return tools
+end
+
+local function ProcessItemQueue()
+    if ItemQueueRunning then
+        return
+    end
+
+    ItemQueueRunning = true
+
+    task.spawn(function()
+        while #ItemUseQueue > 0 do
+            local itemName = table.remove(ItemUseQueue, 1)
+
+            -- Keep using this item until no tools of this type remain.
+            while true do
+                local tools = FindTools(itemName)
+
+                if #tools == 0 then
+                    break
+                end
+
+                local character = LocalPlayer.Character
+                local humanoid = character
+                    and character:FindFirstChildOfClass("Humanoid")
+
+                if not humanoid then
+                    task.wait(0.37)
+                    continue
+                end
+
+                local tool = tools[1]
+
+                if tool.Parent ~= character then
+                    pcall(function()
+                        humanoid:EquipTool(tool)
+                    end)
+                    task.wait(0.1)
+                end
+
+                if tool.Parent == character then
+                    pcall(function()
+                        tool:Activate()
+                    end)
+                end
+
+                task.wait(0.37)
+            end
+        end
+
+        ItemQueueRunning = false
+
+        -- Catch any request queued just as processing ended.
+        if #ItemUseQueue > 0 then
+            ProcessItemQueue()
+        end
+    end)
+end
+
+local function QueueItemUse(itemName)
+    -- Don't queue duplicate requests for the same item type.
+    for _, queuedName in ipairs(ItemUseQueue) do
+        if queuedName == itemName then
+            return
+        end
+    end
+
+    table.insert(ItemUseQueue, itemName)
+    ProcessItemQueue()
+end
+
+ItemsTab:CreateButton({
+    Name = "Use all Cube of Ice",
+    Callback = function()
+        QueueItemUse("Cube of Ice")
+    end
+})
+
+ItemsTab:CreateButton({
+    Name = "Use all Sphere of fury",
+    Callback = function()
+        QueueItemUse("Sphere of fury")
+    end
+})
+
 CreateSavedToggle(ItemsTab, {
 	Name = "Auto goto crate",
 	CurrentValue = false,
@@ -1542,27 +1657,33 @@ local function RemoveNameTag(char)
 end
 
 CreateSavedToggle(ESPTab, {
-	Name = "Player ESP",
-	CurrentValue = false,
-	Callback = function(v)
+    Name = "Player ESP",
+    CurrentValue = false,
+    Callback = function(v)
+        PlayerESPEnabled = v
 
-		PlayerESPEnabled = v
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
 
-		for _, char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
+        for _, char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
+            local player = Players:GetPlayerFromCharacter(char)
 
-			local hrp = char:FindFirstChild("HumanoidRootPart")
+            -- Never apply ESP to the local player
+            if player and player ~= LocalPlayer then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
 
-			if v then
-				if hrp then
-					ApplyHighlight(hrp)
-				end
+                if v then
+                    if hrp then
+                        ApplyHighlight(hrp)
+                    end
 
-				CreateNameTag(char)
-			else
-				RemoveNameTag(char)
-			end
-		end
-	end
+                    CreateNameTag(char)
+                else
+                    RemoveNameTag(char)
+                end
+            end
+        end
+    end
 })
 
 CreateSavedToggle(ESPTab, {
@@ -1748,6 +1869,8 @@ UIS.JumpRequest:Connect(function()
 		end
 	end
 end)
+
+
 
 OtherTab:CreateButton({
 	Name = "Open Lab + Teleport",
@@ -2448,7 +2571,149 @@ end)
 
 
 
+-- Hide Local Username In GUIs
+-- Place this inside your OtherTab section
 
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+local HideUsernameEnabled = false
+local OriginalTexts = {}
+local TextConnections = {}
+local ScanLoopRunning = false
+
+local function ReplaceUsername(instance)
+    if not HideUsernameEnabled then
+        return
+    end
+
+    if not (
+        instance:IsA("TextLabel")
+        or instance:IsA("TextButton")
+        or instance:IsA("TextBox")
+    ) then
+        return
+    end
+
+    local success, currentText = pcall(function()
+        return instance.Text
+    end)
+
+    if not success or type(currentText) ~= "string" then
+        return
+    end
+
+    if not string.find(currentText, LocalPlayer.Name, 1, true) then
+        return
+    end
+
+    if OriginalTexts[instance] == nil then
+        OriginalTexts[instance] = currentText
+    end
+
+    local replacedText = string.gsub(
+        currentText,
+        LocalPlayer.Name,
+        "..."
+    )
+
+    pcall(function()
+        instance.Text = replacedText
+    end)
+end
+
+local function ScanGui(container)
+    local success, descendants = pcall(function()
+        return container:GetDescendants()
+    end)
+
+    if not success then
+        return
+    end
+
+    for _, instance in ipairs(descendants) do
+        ReplaceUsername(instance)
+    end
+end
+
+local function StopConnections()
+    for container, connection in pairs(TextConnections) do
+        connection:Disconnect()
+        TextConnections[container] = nil
+    end
+end
+
+local function EnableUsernameHiding()
+    if ScanLoopRunning then
+        return
+    end
+
+    ScanLoopRunning = true
+
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+    for _, container in ipairs({PlayerGui, CoreGui}) do
+        if not TextConnections[container] then
+            local success, connection = pcall(function()
+                return container.DescendantAdded:Connect(function(instance)
+                    task.defer(function()
+                        ReplaceUsername(instance)
+                    end)
+                end)
+            end)
+
+            if success then
+                TextConnections[container] = connection
+            end
+        end
+    end
+
+    task.spawn(function()
+        while HideUsernameEnabled and ScanLoopRunning do
+            ScanGui(PlayerGui)
+            ScanGui(CoreGui)
+
+            task.wait(0.1)
+        end
+
+        ScanLoopRunning = false
+    end)
+end
+
+local function DisableUsernameHiding()
+    HideUsernameEnabled = false
+    ScanLoopRunning = false
+
+    StopConnections()
+
+    for instance, originalText in pairs(OriginalTexts) do
+        if instance and instance.Parent then
+            pcall(function()
+                instance.Text = originalText
+            end)
+        end
+    end
+
+    table.clear(OriginalTexts)
+end
+
+OtherTab:CreateToggle({
+    Name = "Hide Username",
+    CurrentValue = false,
+    Flag = "HideMyUsernameInGUIs",
+
+    Callback = function(value)
+        HideUsernameEnabled = value
+
+        if value then
+            EnableUsernameHiding()
+        else
+            DisableUsernameHiding()
+        end
+    end
+})
 
 
 -- ZONE CENTER PUSH
@@ -2626,7 +2891,172 @@ Player.CharacterAdded:Connect(function()
 end)
 
 
+SafetyTab:CreateToggle({
+    Name = "Auto Heal",
+    CurrentValue = false,
+    Flag = "AutoHeal",
+    Callback = function(Value)
+        autoHealEnabled = Value
 
+        if autoHealConnection then
+            autoHealConnection:Disconnect()
+            autoHealConnection = nil
+        end
+
+        if not Value then
+            return
+        end
+
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+
+        local player = Players.LocalPlayer
+        local healing = false
+
+        autoHealConnection = RunService.Heartbeat:Connect(function()
+            if healing or not autoHealEnabled then
+                return
+            end
+
+            local character = player.Character
+            if not character then return end
+
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then
+                return
+            end
+
+            local healthPercent =
+                (humanoid.Health / humanoid.MaxHealth) * 100
+
+            local threshold, tools
+
+            if healthPercent < 20 then
+                threshold = 20
+                tools = {
+                    "Apple",
+                    "Bandage",
+                    "First Aid Kit",
+                    "Healing Potion"
+                }
+            elseif healthPercent < 40 then
+                threshold = 40
+                tools = {
+                    "Apple",
+                    "Bandage",
+                    "First Aid Kit"
+                }
+            elseif healthPercent < 60 then
+                threshold = 60
+                tools = {
+                    "Apple",
+                    "Bandage"
+                }
+            elseif healthPercent < 80 then
+                threshold = 80
+                tools = {"Apple"}
+            else
+                return
+            end
+
+            healing = true
+
+            task.spawn(function()
+                local backpack = player:FindFirstChild("Backpack")
+
+                if not backpack then
+                    healing = false
+                    return
+                end
+
+                local function useOnce(toolName)
+                    if not autoHealEnabled
+                        or player.Character ~= character
+                        or humanoid.Health <= 0 then
+                        return false
+                    end
+
+                    local tool = backpack:FindFirstChild(toolName)
+                    if not tool or not tool:IsA("Tool") then
+                        return false
+                    end
+
+                    -- Save the currently equipped tool.
+                    local equippedTool
+
+                    for _, child in ipairs(character:GetChildren()) do
+                        if child:IsA("Tool")
+                            and child.Name ~= toolName
+                            and child.Name ~= "Glove" then
+
+                            equippedTool = child
+                            child.Parent = backpack
+                            break
+                        end
+                    end
+
+                    humanoid:UnequipTools()
+                    task.wait(0.1)
+
+                    if not autoHealEnabled then
+                        if equippedTool then
+                            humanoid:EquipTool(equippedTool)
+                        end
+                        return false
+                    end
+
+                    tool.Parent = character
+                    task.wait(0.25)
+
+                    tool:Activate()
+                    task.wait(0.35)
+
+                    -- Rayfield popup only after activating a tool.
+                    if autoHealEnabled then
+                        Rayfield:Notify({
+                            Title = "Auto Heal",
+                            Content = "Used " .. toolName .. " to heal!",
+                            Duration = 2,
+                            Image = "heart-pulse"
+                        })
+                    end
+
+                    if equippedTool
+                        and equippedTool.Parent == backpack
+                        and humanoid.Health > 0 then
+                        humanoid:EquipTool(equippedTool)
+                    end
+
+                    return true
+                end
+
+                while autoHealEnabled
+                    and player.Character == character
+                    and humanoid.Health > 0
+                    and (humanoid.Health / humanoid.MaxHealth) * 100
+                        < threshold do
+
+                    local used = false
+
+                    for _, toolName in ipairs(tools) do
+                        if useOnce(toolName) then
+                            used = true
+                            break
+                        end
+                    end
+
+                    if not used then
+                        break
+                    end
+
+                    task.wait(0.15)
+                end
+
+                healing = false
+            end)
+        end)
+    end,
+})
 
 
 
@@ -2698,7 +3128,7 @@ task.spawn(function()
                         end)
 
                         if equipped then
-                            task.wait(0.35)
+                            task.wait(0.37)
 
                             if AutoUseEnabled and itemsAllowed then
                                 local activated = pcall(function()
@@ -3750,37 +4180,34 @@ end)
 
 local lastSlap = 0
 
-local function NotRagdolled(char)
-	local hum = char:FindFirstChild("Humanoid")
-	if not hum then return false end
-	if hum.Health <= 0 then return false end
-	if hum.PlatformStand == true then return false end
-	return true
-end
-
 task.spawn(function()
 	while true do
 		if _G.SlapAura then
 			local now = tick()
-			local slapCooldown = SlapAuraMode == "Fast (May get you kicked)" and 0.08 or 0.25
+			local slapCooldown =
+				SlapAuraMode == "Fast (May get you kicked)"
+				and 0.08
+				or 0.25
 
-if now - lastSlap >= slapCooldown then
-				local hrp = Char:FindFirstChild("HumanoidRootPart")
-				local toolEquipped = Char:FindFirstChildWhichIsA("Tool")
+			if now - lastSlap >= slapCooldown then
+				local hrp = Char and Char:FindFirstChild("HumanoidRootPart")
+				local tool = Char and Char:FindFirstChildWhichIsA("Tool")
 
-				if hrp and toolEquipped then
-					for _,player in ipairs(Players:GetPlayers()) do
+				if hrp and tool then
+					for _, player in ipairs(Players:GetPlayers()) do
 						if player ~= lp then
 							local c = player.Character
 							local chrp = c and c:FindFirstChild("HumanoidRootPart")
+							local hum = c and c:FindFirstChildOfClass("Humanoid")
 
-							if chrp and NotRagdolled(c) then
-								local dist = (hrp.Position - chrp.Position).Magnitude
-								if dist <= 20 then
-									lastSlap = now
+							if chrp and hum and hum.Health > 0 then
+								if (hrp.Position - chrp.Position).Magnitude <= 20 then
+									lastSlap = tick()
+
 									pcall(function()
 										ReplicatedStorage.Remotes.Slap:FireServer(chrp)
 									end)
+
 									break
 								end
 							end
@@ -3789,6 +4216,7 @@ if now - lastSlap >= slapCooldown then
 				end
 			end
 		end
+
 		task.wait(0.001)
 	end
 end)
