@@ -2846,7 +2846,7 @@ end
 
 -- Rayfield toggle
 SafetyTab:CreateToggle({
-    Name = "Zone Center Push",
+    Name = "Zone Center Push (Use after storm has appeared)",
     CurrentValue = false,
     Flag = "ZoneCenterPush",
     Callback = function(value)
@@ -4217,7 +4217,7 @@ task.spawn(function()
 			end
 		end
 
-		task.wait(0.001)
+		task.wait(0.0001)
 	end
 end)
 
