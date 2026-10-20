@@ -3972,7 +3972,7 @@ local function StartBusCollection()
 			-- Mode-specific cooldown after the collection finishes.
 			CollectionCooldown = true
 
-			task.wait(GetItemsMode == "Fast" and 5 or 5)
+			task.wait(GetItemsMode == "Fast" and 2 or 2)
 
 			CollectionCooldown = false
 		end
@@ -4067,12 +4067,7 @@ lp.CharacterAdded:Connect(function(c)
 	SetupBusMonitor(c)
 end)
 
---==================================================
--- MAIN COLLECTION LOOP
---
--- Fast: 4 items first, then 7; Slow: 2 items first, then 4
--- Cooldown after each collection: Fast = 5 seconds, Slow = 8 seconds
---==================================================
+
 
 task.spawn(function()
 
