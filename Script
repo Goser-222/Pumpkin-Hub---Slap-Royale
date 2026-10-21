@@ -4212,7 +4212,7 @@ task.spawn(function()
 			end
 		end
 
-		task.wait(0.0001)
+		task.wait(0.005)
 	end
 end)
 
