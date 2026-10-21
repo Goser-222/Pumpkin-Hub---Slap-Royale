@@ -2931,8 +2931,8 @@ SafetyTab:CreateToggle({
 
             local threshold, tools
 
-            if healthPercent < 20 then
-                threshold = 20
+            if healthPercent < 30 then
+                threshold = 30
                 tools = {
                     "Apple",
                     "Bandage",
@@ -3190,7 +3190,7 @@ local ContinueAfterBusRunning = false
 local CollectionRunning = false
 local CollectionCooldown = false
 
--- Fast: first collection = 4, then 7
+-- Fast: first collection = 5, then 8
 -- Slow: first collection = 2, then 4
 local CollectionCycle = 0
 
@@ -3957,7 +3957,7 @@ local function StartBusCollection()
 		local amount
 
 		if GetItemsMode == "Fast" then
-			amount = CollectionCycle == 0 and 4 or 8
+			amount = CollectionCycle == 0 and 5 or 8
 		else
 			amount = CollectionCycle == 0 and 2 or 4
 		end
