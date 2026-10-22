@@ -3972,7 +3972,7 @@ local function StartBusCollection()
 			-- Mode-specific cooldown after the collection finishes.
 			CollectionCooldown = true
 
-			task.wait(GetItemsMode == "Fast" and 2 or 2)
+			task.wait(GetItemsMode == "Fast" and 3 or 3)
 
 			CollectionCooldown = false
 		end
@@ -4181,7 +4181,7 @@ task.spawn(function()
 			local now = tick()
 			local slapCooldown =
 				SlapAuraMode == "Fast (May get you kicked)"
-				and 0.08
+				and 0.1
 				or 0.25
 
 			if now - lastSlap >= slapCooldown then
@@ -4601,7 +4601,7 @@ local function StartGetAllItems()
 
 			if tool then
 
-				-- Tween to tool for 0.4 seconds.
+				-- Tween to tool for 0.2 seconds.
 				local arrived =
 					TweenToGetAllTool(tool)
 
@@ -4610,7 +4610,7 @@ local function StartGetAllItems()
 					and tool.Parent then
 
 					-- Wait 0.4 seconds after arriving.
-					task.wait(0.4)
+					task.wait(0.2)
 
 					if GetAllItemsEnabled
 						and tool.Parent then
@@ -4686,68 +4686,4 @@ lp.CharacterAdded:Connect(function()
 	if GetAllItemsEnabled then
 		SetGetAllItemsNoclip(true)
 	end
-end)
-
-
---==================================================
--- SAVE SCRIPT SETTINGS BUTTON
---==================================================
-
-OtherTab:CreateToggle({
-	Name = "Save Script Settings",
-	CurrentValue = false,
-	Callback = function(value)
-		if value then
-			-- Save once, at the moment this toggle is turned ON.
-			SaveButtonSnapshot()
-		end
-	end
-})
-
--- Restore saved button states. Setting an ON toggle also runs its
--- callback, so the corresponding feature is enabled on startup.
-task.spawn(function()
-	task.wait(0.5)
-
-	local readOK, encoded = pcall(function()
-		if type(isfile) == "function" and not isfile(SavedButtonStatesFile) then
-			return nil
-		end
-		if type(readfile) ~= "function" then
-			return nil
-		end
-		return readfile(SavedButtonStatesFile)
-	end)
-
-	if not readOK or not encoded or encoded == "" then
-		return
-	end
-
-	local decodeOK, snapshot = pcall(function()
-		return HttpService:JSONDecode(encoded)
-	end)
-
-	if not decodeOK or type(snapshot) ~= "table" then
-		return
-	end
-
-	RestoringSavedButtons = true
-
-	for name, value in pairs(snapshot) do
-		local button = SavedToggleButtons[name]
-		if button and type(value) == "boolean" then
-			pcall(function()
-				button:Set(value)
-			end)
-			SavedButtonStates[name] = value
-		end
-	end
-
-	RestoringSavedButtons = false
-
-	Rayfield:Notify({
-		Title = "Saved Button States",
-		Content = "Restored saved toggles and enabled their features.",
-		Duration = 5
-	})
 end)
