@@ -1,0 +1,440 @@
+
+local Rayfield = loadstring(game:HttpGet(
+    "https://sirius.menu/rayfield"
+))()
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local Player = Players.LocalPlayer
+
+--==================================================
+-- WINDOW AND TABS
+--==================================================
+
+local Window = Rayfield:CreateWindow({
+    Name = "Pumpkin Hub - Slap Battles",
+    LoadingTitle = "Pumpkin Hub",
+    LoadingSubtitle = "Slap Battles",
+    ConfigurationSaving = {
+        Enabled = false
+    },
+    KeySystem = false
+})
+
+local CombatTab = Window:CreateTab("Combat", "swords")
+local MiscTab = Window:CreateTab("Misc", "settings")
+local FarmsTab = Window:CreateTab("Farms", "tractor")
+local AntisTab = Window:CreateTab("Antis", "shield")
+
+--==================================================
+-- CHARACTER HELPERS
+--==================================================
+
+local function GetCharacter()
+    return Player.Character
+end
+
+local function GetHumanoid()
+    local Character = GetCharacter()
+    return Character and Character:FindFirstChildOfClass("Humanoid")
+end
+
+local function GetHRP()
+    local Character = GetCharacter()
+    return Character and Character:FindFirstChild("HumanoidRootPart")
+end
+
+--==================================================
+-- MISC: WALK SPEED
+--==================================================
+
+MiscTab:CreateSlider({
+    Name = "WS",
+    Range = {0, 250},
+    Increment = 1,
+    Suffix = " studs/s",
+    CurrentValue = 16,
+    Flag = "WalkSpeed",
+
+    Callback = function(Value)
+        local Humanoid = GetHumanoid()
+        if Humanoid then
+            Humanoid.WalkSpeed = Value
+        end
+    end
+})
+
+--==================================================
+-- MISC: JUMP POWER
+--==================================================
+
+MiscTab:CreateSlider({
+    Name = "JP",
+    Range = {0, 250},
+    Increment = 1,
+    Suffix = " power",
+    CurrentValue = 50,
+    Flag = "JumpPower",
+
+    Callback = function(Value)
+        local Humanoid = GetHumanoid()
+        if Humanoid then
+            Humanoid.UseJumpPower = true
+            Humanoid.JumpPower = Value
+        end
+    end
+})
+
+--==================================================
+-- MISC: GRAVITY
+--==================================================
+
+MiscTab:CreateSlider({
+    Name = "Gravity",
+    Range = {0, 500},
+    Increment = 1,
+    Suffix = " studs/s²",
+    CurrentValue = Workspace.Gravity,
+    Flag = "Gravity",
+
+    Callback = function(Value)
+        Workspace.Gravity = Value
+    end
+})
+
+--==================================================
+-- FARMS: CANDY FARM
+--==================================================
+
+local CandyFarmEnabled = false
+
+local function TeleportCandy()
+    local CandyFolder = Workspace:FindFirstChild("CandyCorns")
+    local HRP = GetHRP()
+
+    if not CandyFolder or not HRP then
+        return
+    end
+
+    for _, Object in ipairs(CandyFolder:GetDescendants()) do
+        if Object:IsA("BasePart") then
+            Object.CFrame = HRP.CFrame
+        end
+    end
+end
+
+FarmsTab:CreateToggle({
+    Name = "CandyFarm",
+    CurrentValue = false,
+    Flag = "CandyFarm",
+
+    Callback = function(Value)
+        CandyFarmEnabled = Value
+
+        if Value then
+            task.spawn(function()
+                while CandyFarmEnabled do
+                    TeleportCandy()
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+--==================================================
+-- COMBAT: SLAP AURA + REACH (SHARED PART FIX)
+--==================================================
+
+local SlapAuraEnabled = false
+local SlapAuraSize = 15
+
+local ReachEnabled = false
+local ReachSize = 5
+
+local OriginalCombatProperties = {}
+local CurrentCombatPart = nil
+
+local function GetCombatPart()
+    local Character = GetCharacter()
+    if not Character then return nil end
+
+    local Tool = Character:FindFirstChildOfClass("Tool")
+    local Glove = Tool and Tool:FindFirstChild("Glove")
+    local Plane = Glove and Glove:FindFirstChild("Plane.001", true)
+
+    if Plane and Plane:IsA("BasePart") then
+        return Plane
+    end
+
+    return nil
+end
+
+local function SaveCombatProperties(Part)
+    if not OriginalCombatProperties[Part] then
+        OriginalCombatProperties[Part] = {
+            Size = Part.Size,
+            Transparency = Part.Transparency
+        }
+    end
+end
+
+local function RestoreCombatPart(Part)
+    local Original = OriginalCombatProperties[Part]
+
+    if Original and Part and Part.Parent then
+        Part.Size = Original.Size
+        Part.Transparency = Original.Transparency
+    end
+
+    OriginalCombatProperties[Part] = nil
+end
+
+local function UpdateCombatPart()
+    local Part = GetCombatPart()
+
+    if CurrentCombatPart ~= Part then
+        if CurrentCombatPart then
+            RestoreCombatPart(CurrentCombatPart)
+        end
+
+        CurrentCombatPart = Part
+    end
+
+    if not Part then return end
+
+    SaveCombatProperties(Part)
+
+    -- Slap Aura has priority over Reach.
+    if SlapAuraEnabled then
+        Part.Size = Vector3.new(SlapAuraSize, SlapAuraSize, SlapAuraSize)
+        Part.Transparency = 1
+    elseif ReachEnabled then
+        Part.Size = Vector3.new(ReachSize, ReachSize, ReachSize)
+        Part.Transparency = 0.7
+    else
+        RestoreCombatPart(Part)
+        CurrentCombatPart = nil
+    end
+end
+
+local function RestoreAllCombatParts()
+    for Part, Original in pairs(OriginalCombatProperties) do
+        if Part and Part.Parent then
+            Part.Size = Original.Size
+            Part.Transparency = Original.Transparency
+        end
+    end
+
+    table.clear(OriginalCombatProperties)
+    CurrentCombatPart = nil
+end
+
+-- Slap Aura toggle
+CombatTab:CreateToggle({
+    Name = "Slap Aura",
+    CurrentValue = false,
+
+    Callback = function(Value)
+        SlapAuraEnabled = Value
+
+        if not Value and not ReachEnabled then
+            RestoreAllCombatParts()
+            return
+        end
+
+        UpdateCombatPart()
+
+        if Value then
+            task.spawn(function()
+                while SlapAuraEnabled do
+                    UpdateCombatPart()
+
+                    local Character = GetCharacter()
+                    local Tool = Character and Character:FindFirstChildOfClass("Tool")
+
+                    if Tool then
+                        pcall(function()
+                            Tool:Activate()
+                        end)
+                    end
+
+                    task.wait(0.1)
+                end
+
+                UpdateCombatPart()
+            end)
+        end
+    end
+})
+
+CombatTab:CreateSlider({
+    Name = "Slap Aura Size",
+    Range = {1, 30},
+    Increment = 1,
+    Suffix = " studs",
+    CurrentValue = 15,
+
+    Callback = function(Value)
+        SlapAuraSize = Value
+        UpdateCombatPart()
+    end
+})
+
+-- Reach toggle
+CombatTab:CreateToggle({
+    Name = "Reach",
+    CurrentValue = false,
+    Flag = "ReachEnabled",
+
+    Callback = function(Value)
+        ReachEnabled = Value
+
+        if not Value and not SlapAuraEnabled then
+            RestoreAllCombatParts()
+        else
+            UpdateCombatPart()
+        end
+    end
+})
+
+CombatTab:CreateSlider({
+    Name = "Reach Size",
+    Range = {1, 30},
+    Increment = 1,
+    Suffix = " studs",
+    CurrentValue = 5,
+    Flag = "ReachSize",
+
+    Callback = function(Value)
+        ReachSize = Value
+        UpdateCombatPart()
+    end
+})
+
+-- Shared update loop: handles tool swaps and keeps properties correct.
+task.spawn(function()
+    while true do
+        if SlapAuraEnabled or ReachEnabled then
+            UpdateCombatPart()
+        end
+
+        task.wait(0.1)
+    end
+end)
+
+--==================================================
+-- ANTIS: ANTI RAGDOLL
+--==================================================
+
+local AntiRagdollEnabled = false
+local OriginalAnchored = {}
+local RagdollConnection
+
+local function RestoreAnchoring()
+    for Part, WasAnchored in pairs(OriginalAnchored) do
+        if Part and Part.Parent then
+            Part.Anchored = WasAnchored
+        end
+    end
+
+    table.clear(OriginalAnchored)
+end
+
+local function SetCharacterAnchored(Character, Enabled)
+    for _, Object in ipairs(Character:GetDescendants()) do
+        if Object:IsA("BasePart") then
+            if Enabled then
+                if OriginalAnchored[Object] == nil then
+                    OriginalAnchored[Object] = Object.Anchored
+                end
+
+                Object.Anchored = true
+            elseif OriginalAnchored[Object] ~= nil then
+                Object.Anchored = OriginalAnchored[Object]
+                OriginalAnchored[Object] = nil
+            end
+        end
+    end
+end
+
+local function StopAntiRagdoll()
+    if RagdollConnection then
+        RagdollConnection:Disconnect()
+        RagdollConnection = nil
+    end
+
+    RestoreAnchoring()
+end
+
+local function StartAntiRagdoll(Character)
+    StopAntiRagdoll()
+
+    if not AntiRagdollEnabled or not Character then
+        return
+    end
+
+    local Ragdolled = Character:WaitForChild("Ragdolled", 5)
+    if not Ragdolled then
+        return
+    end
+
+    local function Update()
+        if not AntiRagdollEnabled or not Character.Parent then
+            RestoreAnchoring()
+            return
+        end
+
+        SetCharacterAnchored(Character, Ragdolled.Value == true)
+    end
+
+    Update()
+
+    RagdollConnection = Ragdolled:GetPropertyChangedSignal("Value"):Connect(Update)
+end
+
+AntisTab:CreateToggle({
+    Name = "Anti Ragdoll",
+    CurrentValue = false,
+    Flag = "AntiRagdoll",
+
+    Callback = function(Value)
+        AntiRagdollEnabled = Value
+
+        if Value then
+            StartAntiRagdoll(GetCharacter())
+        else
+            StopAntiRagdoll()
+        end
+    end
+})
+
+--==================================================
+-- RESPAWN HANDLING
+--==================================================
+
+Player.CharacterAdded:Connect(function(Character)
+    RestoreReach()
+    StopAntiRagdoll()
+
+    task.wait(1)
+
+    if ReachEnabled then
+        ApplyReach()
+    end
+
+    if AntiRagdollEnabled then
+        StartAntiRagdoll(Character)
+    end
+end)
+
+--==================================================
+-- NOTIFICATION
+--==================================================
+
+Rayfield:Notify({
+    Title = "Candy Hub",
+    Content = "All features loaded!",
+    Duration = 4
+})
