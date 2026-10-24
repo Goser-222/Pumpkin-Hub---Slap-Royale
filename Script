@@ -486,6 +486,104 @@ CombatTab:CreateDropdown({
     end
 })
 
+
+
+
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local SlapAuraRangePart = nil
+
+local function RangeNotify(message)
+    warn("[Slap Aura Range] " .. message)
+
+    pcall(function()
+        Rayfield:Notify({
+            Title = "Slap Aura Range",
+            Content = message,
+            Duration = 5
+        })
+    end)
+end
+
+local function RemoveSlapAuraRange()
+    if SlapAuraRangePart then
+        SlapAuraRangePart:Destroy()
+        SlapAuraRangePart = nil
+    end
+
+    RangeNotify("Sphere removed.")
+end
+
+local function CreateSlapAuraRange()
+    RangeNotify("Getting local player...")
+
+    local character = LocalPlayer.Character
+    if not character then
+        RangeNotify("Character not ready. Waiting...")
+        character = LocalPlayer.CharacterAdded:Wait()
+    end
+
+    local hrp = character:WaitForChild("HumanoidRootPart", 10)
+    if not hrp then
+        RangeNotify("ERROR: HumanoidRootPart not found!")
+        return
+    end
+
+    RangeNotify("Creating sphere...")
+
+    local ball = Instance.new("Part")
+    ball.Name = "SlapAuraRange"
+    ball.Shape = Enum.PartType.Ball
+    ball.Size = Vector3.new(25, 25, 25)
+    ball.Color = Color3.fromRGB(0, 255, 0)
+    ball.Transparency = 0.7
+    ball.Material = Enum.Material.Neon
+    ball.Anchored = false
+    ball.CanCollide = false
+    ball.CanTouch = false
+    ball.CanQuery = false
+    ball.CastShadow = false
+    ball.Massless = true
+    ball.CFrame = hrp.CFrame
+    ball.Parent = workspace
+
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0 = hrp
+    weld.Part1 = ball
+    weld.Parent = ball
+
+    SlapAuraRangePart = ball
+
+    RangeNotify("SUCCESS: Sphere attached!")
+end
+
+CreateSavedToggle(CombatTab, {
+    Name = "Slap Aura Range",
+    CurrentValue = false,
+
+    Callback = function(enabled)
+        RangeNotify("Toggle: " .. tostring(enabled))
+
+        local success, err = pcall(function()
+            if enabled then
+                CreateSlapAuraRange()
+            else
+                RemoveSlapAuraRange()
+            end
+        end)
+
+        if not success then
+            RangeNotify("ERROR: " .. tostring(err))
+        end
+    end
+})
+
+
+
+
+
 CreateSavedToggle(CombatTab, {
 	Name="Auto Win",
 	CurrentValue=false,
@@ -1571,6 +1669,14 @@ ItemsTab:CreateButton({
         QueueItemUse("Sphere of fury")
     end
 })
+
+
+
+
+
+
+
+
 
 CreateSavedToggle(ItemsTab, {
 	Name = "Auto goto crate",
@@ -4173,48 +4279,93 @@ task.spawn(function()
 	end
 end)
 
+
 local lastSlap = 0
 
+local function IsRagdolled(character)
+    if not character then
+        return true
+    end
+
+    -- Check common ragdoll attributes
+    for _, attribute in ipairs({"Ragdolled", "IsRagdolled", "Ragdoll"}) do
+        if character:GetAttribute(attribute) == true then
+            return true
+        end
+    end
+
+    -- Check common ragdoll BoolValues
+    for _, name in ipairs({"Ragdolled", "IsRagdolled", "Ragdoll"}) do
+        local value = character:FindFirstChild(name, true)
+
+        if value and value:IsA("BoolValue") and value.Value then
+            return true
+        end
+    end
+
+    -- Many ragdoll systems disable Motor6D joints
+    for _, object in ipairs(character:GetDescendants()) do
+        if object:IsA("Motor6D") and not object.Enabled then
+            return true
+        end
+    end
+
+    return false
+end
+
 task.spawn(function()
-	while true do
-		if _G.SlapAura then
-			local now = tick()
-			local slapCooldown =
-				SlapAuraMode == "Fast (May get you kicked)"
-				and 0.1
-				or 0.25
+    while true do
+        if _G.SlapAura then
+            local now = tick()
 
-			if now - lastSlap >= slapCooldown then
-				local hrp = Char and Char:FindFirstChild("HumanoidRootPart")
-				local tool = Char and Char:FindFirstChildWhichIsA("Tool")
+            if now - lastSlap >= 0.25 then
+                local hrp = Char and Char:FindFirstChild("HumanoidRootPart")
+                local tool = Char and Char:FindFirstChildWhichIsA("Tool")
 
-				if hrp and tool then
-					for _, player in ipairs(Players:GetPlayers()) do
-						if player ~= lp then
-							local c = player.Character
-							local chrp = c and c:FindFirstChild("HumanoidRootPart")
-							local hum = c and c:FindFirstChildOfClass("Humanoid")
+                if hrp and tool then
+                    local closestTarget = nil
+                    local closestDistance = 20
 
-							if chrp and hum and hum.Health > 0 then
-								if (hrp.Position - chrp.Position).Magnitude <= 20 then
-									lastSlap = tick()
+                    for _, player in ipairs(Players:GetPlayers()) do
+                        if player ~= lp then
+                            local character = player.Character
+                            local targetHrp = character
+                                and character:FindFirstChild("HumanoidRootPart")
+                            local humanoid = character
+                                and character:FindFirstChildOfClass("Humanoid")
 
-									pcall(function()
-										ReplicatedStorage.Remotes.Slap:FireServer(chrp)
-									end)
+                            if targetHrp
+                                and humanoid
+                                and humanoid.Health > 0
+                                and not IsRagdolled(character)
+                            then
+                                local distance =
+                                    (hrp.Position - targetHrp.Position).Magnitude
 
-									break
-								end
-							end
-						end
-					end
-				end
-			end
-		end
+                                if distance <= closestDistance then
+                                    closestDistance = distance
+                                    closestTarget = targetHrp
+                                end
+                            end
+                        end
+                    end
 
-		task.wait(0.005)
-	end
+                    -- Only start cooldown when a valid target is found
+                    if closestTarget then
+                        lastSlap = tick()
+
+                        pcall(function()
+                            ReplicatedStorage.Remotes.Slap:FireServer(closestTarget)
+                        end)
+                    end
+                end
+            end
+        end
+
+        task.wait(0.05)
+    end
 end)
+
 
 task.spawn(function()
 	while true do
