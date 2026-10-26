@@ -1716,60 +1716,110 @@ CreateSavedToggle(ItemsTab, {
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
+local LocalPlayer = Players.LocalPlayer
 local PlayerESPEnabled = false
+local HealthConnections = {}
+
+--==================================================
+-- CREATE NAME TAG
+--==================================================
 
 local function CreateNameTag(char)
-	local head = char:FindFirstChild("Head")
-	if not head then
-		return
-	end
+    local head = char:FindFirstChild("Head")
+    if not head then
+        return
+    end
 
-	local oldTag = head:FindFirstChild("PlayerESP")
-	if oldTag then
-		oldTag:Destroy()
-	end
+    local oldTag = head:FindFirstChild("PlayerESP")
+    if oldTag then
+        oldTag:Destroy()
+    end
 
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "PlayerESP"
-	billboard.Adornee = head
-	billboard.Size = UDim2.new(0, 200, 0, 35)
-	billboard.StudsOffset = Vector3.new(0, 3, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = head
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "PlayerESP"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 200, 0, 35)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
 
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Name = "Name"
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Size = UDim2.new(1, 0, 1, 0)
-	nameLabel.Text = char.Name
-	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	nameLabel.TextStrokeTransparency = 0
-	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	nameLabel.TextScaled = true
-	nameLabel.Font = Enum.Font.GothamBold
-	nameLabel.Parent = billboard
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "Name"
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.Text = char.Name
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.TextScaled = true
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Parent = billboard
+
+    -- Update the actual ESP name text color
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        local function UpdateNameColor()
+            if not PlayerESPEnabled or not nameLabel.Parent then
+                return
+            end
+
+            if humanoid.Health <= 0 then
+                nameLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            else
+                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end
+        end
+
+        UpdateNameColor()
+
+        -- Disconnect any previous health listener for this character
+        if HealthConnections[char] then
+            HealthConnections[char]:Disconnect()
+            HealthConnections[char] = nil
+        end
+
+        HealthConnections[char] =
+            humanoid.HealthChanged:Connect(UpdateNameColor)
+
+        humanoid.Died:Connect(function()
+            if nameLabel.Parent then
+                nameLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            end
+        end)
+    end
 end
+
+--==================================================
+-- REMOVE NAME TAG
+--==================================================
 
 local function RemoveNameTag(char)
-	local head = char:FindFirstChild("Head")
+    local head = char:FindFirstChild("Head")
 
-	if head then
-		local billboard = head:FindFirstChild("PlayerESP")
+    if head then
+        local billboard = head:FindFirstChild("PlayerESP")
 
-		if billboard then
-			billboard:Destroy()
-		end
-	end
+        if billboard then
+            billboard:Destroy()
+        end
+    end
+
+    if HealthConnections[char] then
+        HealthConnections[char]:Disconnect()
+        HealthConnections[char] = nil
+    end
 end
+
+--==================================================
+-- PLAYER ESP TOGGLE
+--==================================================
 
 CreateSavedToggle(ESPTab, {
     Name = "Player ESP",
     CurrentValue = false,
+
     Callback = function(v)
         PlayerESPEnabled = v
-
-        local Players = game:GetService("Players")
-        local LocalPlayer = Players.LocalPlayer
 
         for _, char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
             local player = Players:GetPlayerFromCharacter(char)
@@ -2283,6 +2333,204 @@ OtherTab:CreateButton({
 			Duration = 5
 		})
 	end
+})
+
+OtherTab:CreateButton({
+    Name = "Open Bunker",
+    Callback = function()
+
+        local Players = game:GetService("Players")
+
+        local codes = {
+            ["9648755440"] = "8",
+            ["9648765536"] = "2",
+            ["9648723237"] = "3",
+            ["9648718450"] = "6",
+            ["9648769161"] = "4",
+            ["9648730082"] = "6",
+            ["9648734698"] = "2",
+            ["9648712563"] = "2",
+            ["9648742013"] = "7",
+            ["9648745618"] = "3",
+            ["9648715920"] = "6",
+            ["9648752438"] = "2",
+            ["9648749145"] = "8",
+            ["9648759883"] = "9",
+            ["9648738553"] = "8"
+        }
+
+        local function Notify(title, content)
+            Rayfield:Notify({
+                Title = title,
+                Content = content,
+                Duration = 5
+            })
+        end
+
+        -- Get Map
+        local map = workspace:FindFirstChild("Map")
+
+        if not map then
+            Notify("Open Bunker", "Map not found.")
+            return
+        end
+
+        -- Get code GUI
+        local codeBrick = map:FindFirstChild("CodeBrick")
+        local surfaceGui = codeBrick and codeBrick:FindFirstChild("SurfaceGui")
+
+        if not surfaceGui then
+            Notify("Open Bunker", "CodeBrick/SurfaceGui not found.")
+            return
+        end
+
+        -- Find IMGTemplate objects
+        local templates = {}
+
+        for _, obj in ipairs(surfaceGui:GetChildren()) do
+            if obj.Name == "IMGTemplate" then
+                table.insert(templates, obj)
+            end
+        end
+
+        if #templates ~= 4 then
+            Notify(
+                "Open Bunker",
+                "Found " .. #templates .. " images instead of 4."
+            )
+            return
+        end
+
+        -- Sort images left to right
+        table.sort(templates, function(a, b)
+            local ax = a.AbsolutePosition.X
+            local bx = b.AbsolutePosition.X
+
+            if math.abs(ax - bx) > 1 then
+                return ax < bx
+            end
+
+            return a.AbsolutePosition.Y < b.AbsolutePosition.Y
+        end)
+
+        local result = {}
+
+        -- Convert images to digits
+        for i, imageObject in ipairs(templates) do
+            local image = tostring(imageObject.Image)
+
+            local assetId =
+                image:match("[?&]id=(%d+)")
+                or image:match("rbxassetid://(%d+)")
+                or image:match("(%d+)$")
+
+            local digit = assetId and codes[assetId]
+
+            if not digit then
+                Notify(
+                    "Open Bunker",
+                    "Unknown image at position " .. i .. ": " .. image
+                )
+                return
+            end
+
+            result[i] = digit
+        end
+
+        local CodeEsp = table.concat(result)
+
+        -- Get bunker door
+        local originOffice = map:FindFirstChild("OriginOffice")
+
+        if not originOffice then
+            Notify("Open Bunker", "OriginOffice not found.")
+            return
+        end
+
+        local codeDoor = originOffice:FindFirstChild("CodeDoor")
+        local door = codeDoor and codeDoor:FindFirstChild("Door")
+
+        if not door then
+            Notify("Open Bunker", "Door not found.")
+            return
+        end
+
+        -- Get keypad
+        local keypad = door:FindFirstChild("Keypad")
+        local buttonsFolder = keypad and keypad:FindFirstChild("Buttons")
+
+        if not buttonsFolder then
+            Notify("Open Bunker", "Keypad Buttons not found.")
+            return
+        end
+
+        -- Reset keypad
+        local resetButton = buttonsFolder:FindFirstChild("Reset")
+
+        if not resetButton then
+            Notify("Open Bunker", "Reset button not found.")
+            return
+        end
+
+        local resetDetector =
+            resetButton:FindFirstChildOfClass("ClickDetector")
+
+        if not resetDetector then
+            Notify("Open Bunker", "ClickDetector missing from Reset.")
+            return
+        end
+
+        fireclickdetector(resetDetector)
+        task.wait(0.2)
+
+        -- Enter code
+        for i = 1, #CodeEsp do
+            local digit = CodeEsp:sub(i, i)
+            local button = buttonsFolder:FindFirstChild(digit)
+
+            if not button then
+                Notify("Open Bunker", "Button " .. digit .. " not found.")
+                return
+            end
+
+            local clickDetector =
+                button:FindFirstChildOfClass("ClickDetector")
+
+            if not clickDetector then
+                Notify(
+                    "Open Bunker",
+                    "ClickDetector missing from button " .. digit .. "."
+                )
+                return
+            end
+
+            fireclickdetector(clickDetector)
+            task.wait(0.15)
+        end
+
+        -- Press Enter
+        local enterButton = buttonsFolder:FindFirstChild("Enter")
+
+        if not enterButton then
+            Notify("Open Bunker", "Enter button not found.")
+            return
+        end
+
+        local enterDetector =
+            enterButton:FindFirstChildOfClass("ClickDetector")
+
+        if not enterDetector then
+            Notify("Open Bunker", "ClickDetector missing from Enter.")
+            return
+        end
+
+        fireclickdetector(enterDetector)
+
+        Notify(
+            "Bunker Code Entered [ " .. CodeEsp .. " ]",
+            "Keypad reset and code entered. No teleport performed."
+        )
+    end
 })
 
 OtherTab:CreateButton({
