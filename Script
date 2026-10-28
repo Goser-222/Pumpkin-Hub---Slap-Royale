@@ -3029,7 +3029,7 @@ local function EnableUsernameHiding()
             ScanGui(PlayerGui)
             ScanGui(CoreGui)
 
-            task.wait(0.1)
+            task.wait(0)
         end
 
         ScanLoopRunning = false
