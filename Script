@@ -584,63 +584,184 @@ CreateSavedToggle(CombatTab, {
 
 
 
-CreateSavedToggle(CombatTab, {
-	Name="Auto Win",
-	CurrentValue=false,
-	Callback=function(v)
-		_G.AutoWin=v
-	end
-})
+--==================================================
+-- AUTO WIN
+--==================================================
+
+_G.AutoWin = _G.AutoWin or false
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local currentTarget = nil
+local autoWinMode = "One at a time"
+
+local AUTO_WIN_INTERVAL = 3
+local TARGETS_BEFORE_PAUSE = 5
+local PAUSE_DURATION = 10
 
 local hitCount = 0
+local pauseUntil = 0
 
-local function IsRagdolled(char)
-	local hum = char:FindFirstChild("Humanoid")
-	if not hum then return true end
-	if hum.Health <= 0 then return true end
-	if hum.PlatformStand then return true end
-	return false
+CreateSavedToggle(CombatTab, {
+    Name = "Auto Win",
+    CurrentValue = _G.AutoWin,
+    Callback = function(v)
+        _G.AutoWin = v
+
+        if not v then
+            currentTarget = nil
+            hitCount = 0
+            pauseUntil = 0
+        end
+    end
+})
+
+CombatTab:CreateDropdown({
+    Name = "Auto Win Mode",
+    Options = {"One at a time", "Slap All"},
+    CurrentOption = {"One at a time"},
+    MultipleOptions = false,
+    Callback = function(option)
+        if typeof(option) == "table" then
+            autoWinMode = option[1] or "One at a time"
+        else
+            autoWinMode = option or "One at a time"
+        end
+
+        currentTarget = nil
+        hitCount = 0
+        pauseUntil = 0
+    end
+})
+
+-- Returns the character's root only if the player is alive.
+local function GetRoot(plr)
+    if not plr then
+        return nil
+    end
+
+    local char = plr.Character
+    if not char then
+        return nil
+    end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+
+    if not hum or hum.Health <= 0 or not root then
+        return nil
+    end
+
+    return root
+end
+
+local function IsRagdolled(plr)
+    local char = plr and plr.Character
+    if not char then
+        return true
+    end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then
+        return true
+    end
+
+    local ragdollValue = char:FindFirstChild("Ragdolled", true)
+    if ragdollValue and ragdollValue:IsA("BoolValue") then
+        return ragdollValue.Value
+    end
+
+    return hum.PlatformStand
+end
+
+local function GetClosestPlayer(skipRagdolled)
+    local myChar = LocalPlayer.Character
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+    if not myHum or myHum.Health <= 0 or not myRoot then
+        return nil
+    end
+
+    local closestPlayer = nil
+    local closestDistance = math.huge
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local targetRoot = GetRoot(plr)
+
+            if targetRoot and not (skipRagdolled and IsRagdolled(plr)) then
+                local distance =
+                    (myRoot.Position - targetRoot.Position).Magnitude
+
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = plr
+                end
+            end
+        end
+    end
+
+    return closestPlayer
 end
 
 task.spawn(function()
-	while task.wait(5) do
-		if not _G.AutoWin then
-			continue
-		end
+    while true do
+        task.wait(AUTO_WIN_INTERVAL)
 
-		if hitCount >= 5 then
-			hitCount = 0
-			task.wait(10)
-		end
+        if not _G.AutoWin then
+            continue
+        end
 
-		local hrp = Char and Char:FindFirstChild("HumanoidRootPart")
-		if not hrp then
-			continue
-		end
+        if os.clock() < pauseUntil then
+            continue
+        end
 
-		local closest, closestDist = nil, math.huge
+        local ok, err = pcall(function()
+            local myChar = LocalPlayer.Character
+            local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
 
-		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr ~= LocalPlayer then
-				local char = plr.Character
-				local targetHrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not myHum or myHum.Health <= 0 or not myRoot then
+                return
+            end
 
-				if targetHrp and not IsRagdolled(char) then
-					local dist = (hrp.Position - targetHrp.Position).Magnitude
+            if autoWinMode == "One at a time" then
+                -- Keep the same living target, even while ragdolled.
+                if not currentTarget or not GetRoot(currentTarget) then
+                    currentTarget = GetClosestPlayer(false)
+                end
 
-					if dist < closestDist then
-						closestDist = dist
-						closest = targetHrp
-					end
-				end
-			end
-		end
+                local targetRoot = GetRoot(currentTarget)
 
-		if closest then
-			hrp.CFrame = closest.CFrame
-			hitCount += 1
-		end
-	end
+                if targetRoot then
+                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
+                end
+            else
+                -- Slap All: skip ragdolled players.
+                currentTarget = GetClosestPlayer(true)
+
+                local targetRoot = GetRoot(currentTarget)
+
+                if targetRoot and not IsRagdolled(currentTarget) then
+                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
+
+                    hitCount += 1
+
+                    if hitCount >= TARGETS_BEFORE_PAUSE then
+                        hitCount = 0
+                        pauseUntil = os.clock() + PAUSE_DURATION
+                        currentTarget = nil
+                    end
+                end
+            end
+        end)
+
+        if not ok then
+            warn("[Auto Win] Error:", err)
+        end
+    end
 end)
 
 local Players = game:GetService("Players")
