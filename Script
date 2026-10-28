@@ -2149,6 +2149,19 @@ end)
 
 
 
+OtherTab:CreateSlider({
+    Name = "Max Zoom Out Distance (Use after landing)",
+    Range = {1, 2000},
+    Increment = 100,
+    Suffix = " studs",
+    CurrentValue = 128,
+    Flag = "MaxZoomOutDistance",
+    Callback = function(Value)
+        game.Players.LocalPlayer.CameraMaxZoomDistance = Value
+    end,
+})
+
+
 OtherTab:CreateButton({
 	Name = "Open Lab + Teleport",
 	Callback = function()
