@@ -584,6 +584,7 @@ CreateSavedToggle(CombatTab, {
 
 
 
+
 --==================================================
 -- AUTO WIN
 --==================================================
@@ -591,6 +592,9 @@ CreateSavedToggle(CombatTab, {
 _G.AutoWin = _G.AutoWin or false
 
 local Players = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
+local StarterGui = game:GetService("StarterGui")
+
 local LocalPlayer = Players.LocalPlayer
 
 local currentTarget = nil
@@ -600,12 +604,38 @@ local AUTO_WIN_INTERVAL = 3
 local TARGETS_BEFORE_PAUSE = 5
 local PAUSE_DURATION = 10
 
+-- PATHFINDING SETTINGS
+local PATH_UPDATE_INTERVAL = 1
+local TARGET_CHECK_INTERVAL = 0.4
+local WAYPOINT_REACHED_DISTANCE = 3
+
 local hitCount = 0
 local pauseUntil = 0
+
+local walkGeneration = 0
+
+--==================================================
+-- NOTIFICATION
+--==================================================
+
+local function Notify(title, message)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = message,
+            Duration = 7
+        })
+    end)
+end
+
+--==================================================
+-- TOGGLE
+--==================================================
 
 CreateSavedToggle(CombatTab, {
     Name = "Auto Win",
     CurrentValue = _G.AutoWin,
+
     Callback = function(v)
         _G.AutoWin = v
 
@@ -613,16 +643,37 @@ CreateSavedToggle(CombatTab, {
             currentTarget = nil
             hitCount = 0
             pauseUntil = 0
+
+            walkGeneration += 1
+
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+            if hum then
+                hum:MoveTo(hum.RootPart and hum.RootPart.Position or Vector3.zero)
+            end
         end
     end
 })
 
+--==================================================
+-- MODE DROPDOWN
+--==================================================
+
 CombatTab:CreateDropdown({
     Name = "Auto Win Mode",
-    Options = {"One at a time", "Slap All"},
+
+    Options = {
+        "One at a time",
+        "Slap All",
+        "Walk to target"
+    },
+
     CurrentOption = {"One at a time"},
     MultipleOptions = false,
+
     Callback = function(option)
+
         if typeof(option) == "table" then
             autoWinMode = option[1] or "One at a time"
         else
@@ -632,16 +683,30 @@ CombatTab:CreateDropdown({
         currentTarget = nil
         hitCount = 0
         pauseUntil = 0
+
+        walkGeneration += 1
+
+        if autoWinMode == "Walk to target" then
+            Notify(
+                "Auto Win - Testing",
+                "This is in testing please report back to owner if it works or if does not work"
+            )
+        end
     end
 })
 
--- Returns the character's root only if the player is alive.
+--==================================================
+-- GET ROOT
+--==================================================
+
 local function GetRoot(plr)
+
     if not plr then
         return nil
     end
 
     local char = plr.Character
+
     if not char then
         return nil
     end
@@ -656,18 +721,26 @@ local function GetRoot(plr)
     return root
 end
 
+--==================================================
+-- RAGDOLL CHECK
+--==================================================
+
 local function IsRagdolled(plr)
+
     local char = plr and plr.Character
+
     if not char then
         return true
     end
 
     local hum = char:FindFirstChildOfClass("Humanoid")
+
     if not hum or hum.Health <= 0 then
         return true
     end
 
     local ragdollValue = char:FindFirstChild("Ragdolled", true)
+
     if ragdollValue and ragdollValue:IsA("BoolValue") then
         return ragdollValue.Value
     end
@@ -675,7 +748,12 @@ local function IsRagdolled(plr)
     return hum.PlatformStand
 end
 
+--==================================================
+-- GET CLOSEST PLAYER
+--==================================================
+
 local function GetClosestPlayer(skipRagdolled)
+
     local myChar = LocalPlayer.Character
     local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -688,10 +766,13 @@ local function GetClosestPlayer(skipRagdolled)
     local closestDistance = math.huge
 
     for _, plr in ipairs(Players:GetPlayers()) do
+
         if plr ~= LocalPlayer then
+
             local targetRoot = GetRoot(plr)
 
             if targetRoot and not (skipRagdolled and IsRagdolled(plr)) then
+
                 local distance =
                     (myRoot.Position - targetRoot.Position).Magnitude
 
@@ -706,8 +787,164 @@ local function GetClosestPlayer(skipRagdolled)
     return closestPlayer
 end
 
+--==================================================
+-- VALID WALK TARGET
+--==================================================
+
+local function IsValidWalkTarget(plr)
+
+    if not plr or plr == LocalPlayer then
+        return false
+    end
+
+    if not GetRoot(plr) then
+        return false
+    end
+
+    if IsRagdolled(plr) then
+        return false
+    end
+
+    return true
+end
+
+--==================================================
+-- PATHFINDING
+--==================================================
+
+local function WalkToTarget(generation)
+
+    local lastPathUpdate = 0
+    local activeTarget = nil
+    local waypoints = {}
+    local waypointIndex = 1
+
+    local myChar = LocalPlayer.Character
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+    if not myHum or not myRoot then
+        return
+    end
+
+    while _G.AutoWin
+        and autoWinMode == "Walk to target"
+        and walkGeneration == generation do
+
+        task.wait(TARGET_CHECK_INTERVAL)
+
+        -- Check our character
+        myChar = LocalPlayer.Character
+        myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+        myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+        if not myHum or myHum.Health <= 0 or not myRoot then
+            continue
+        end
+
+        -- Always search for the closest eligible target
+        local newTarget = GetClosestPlayer(true)
+
+        if not IsValidWalkTarget(newTarget) then
+            activeTarget = nil
+            waypoints = {}
+            continue
+        end
+
+        -- Switch targets immediately when necessary
+        if newTarget ~= activeTarget then
+            activeTarget = newTarget
+            waypoints = {}
+            waypointIndex = 1
+            lastPathUpdate = 0
+        end
+
+        local targetRoot = GetRoot(activeTarget)
+
+        if not targetRoot or IsRagdolled(activeTarget) then
+            activeTarget = nil
+            waypoints = {}
+            continue
+        end
+
+        -- Stop once close enough
+        local distance =
+            (myRoot.Position - targetRoot.Position).Magnitude
+
+        if distance <= WAYPOINT_REACHED_DISTANCE + 2 then
+            myHum:MoveTo(targetRoot.Position)
+            continue
+        end
+
+        -- Recalculate path periodically
+        if os.clock() - lastPathUpdate >= PATH_UPDATE_INTERVAL then
+
+            lastPathUpdate = os.clock()
+
+            local path = PathfindingService:CreatePath({
+                AgentRadius = 2,
+                AgentHeight = 5,
+                AgentCanJump = true,
+                AgentCanClimb = true,
+                WaypointSpacing = 4
+            })
+
+            local success = pcall(function()
+                path:ComputeAsync(
+                    myRoot.Position,
+                    targetRoot.Position
+                )
+            end)
+
+            if success and path.Status == Enum.PathStatus.Success then
+
+                waypoints = path:GetWaypoints()
+                waypointIndex = 2
+
+            else
+                waypoints = {}
+            end
+        end
+
+        -- Follow calculated path
+        local waypoint = waypoints[waypointIndex]
+
+        if waypoint then
+
+            -- Jump when required by pathfinding
+            if waypoint.Action == Enum.PathWaypointAction.Jump then
+                myHum.Jump = true
+            end
+
+            myHum:MoveTo(waypoint.Position)
+
+            local waypointDistance =
+                (myRoot.Position - waypoint.Position).Magnitude
+
+            if waypointDistance <= WAYPOINT_REACHED_DISTANCE then
+                waypointIndex += 1
+            end
+
+        else
+            -- Retry path calculation if no usable waypoint exists
+            lastPathUpdate = 0
+        end
+    end
+
+    -- Stop movement when this walking task ends
+    if LocalPlayer.Character == myChar and myHum and myHum.Health > 0 then
+        myHum:MoveTo(myRoot.Position)
+    end
+end
+
+--==================================================
+-- MAIN AUTO WIN LOOP
+--==================================================
+
 task.spawn(function()
+
     while true do
+
         task.wait(AUTO_WIN_INTERVAL)
 
         if not _G.AutoWin then
@@ -719,6 +956,7 @@ task.spawn(function()
         end
 
         local ok, err = pcall(function()
+
             local myChar = LocalPlayer.Character
             local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
             local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -727,8 +965,9 @@ task.spawn(function()
                 return
             end
 
+            -- ONE AT A TIME
             if autoWinMode == "One at a time" then
-                -- Keep the same living target, even while ragdolled.
+
                 if not currentTarget or not GetRoot(currentTarget) then
                     currentTarget = GetClosestPlayer(false)
                 end
@@ -738,24 +977,58 @@ task.spawn(function()
                 if targetRoot then
                     myRoot.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
                 end
-            else
-                -- Slap All: skip ragdolled players.
+
+            -- SLAP ALL
+            elseif autoWinMode == "Slap All" then
+
                 currentTarget = GetClosestPlayer(true)
 
                 local targetRoot = GetRoot(currentTarget)
 
                 if targetRoot and not IsRagdolled(currentTarget) then
+
                     myRoot.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
 
                     hitCount += 1
 
                     if hitCount >= TARGETS_BEFORE_PAUSE then
+
                         hitCount = 0
                         pauseUntil = os.clock() + PAUSE_DURATION
                         currentTarget = nil
                     end
                 end
+
+            -- WALK TO TARGET
+            elseif autoWinMode == "Walk to target" then
+
+                -- Start one pathfinding task for this selection
+                if not _G.AutoWin then
+                    return
+                end
+
+                if not _G.AutoWin then
+                    return
+                end
+
+                walkGeneration += 1
+
+                local thisGeneration = walkGeneration
+
+                task.spawn(function()
+
+                    local success, walkError = pcall(function()
+                        WalkToTarget(thisGeneration)
+                    end)
+
+                    if not success then
+                        warn("[Auto Win] Pathfinding error:", walkError)
+                    end
+
+                end)
+
             end
+
         end)
 
         if not ok then
