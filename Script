@@ -584,408 +584,133 @@ CreateSavedToggle(CombatTab, {
 
 
 
-
-
-
 --==================================================
--- AUTO WIN - RAYFIELD CLIENT VERSION
--- No Saved Toggle
+-- AUTO WIN
 --==================================================
+
+_G.AutoWin = _G.AutoWin or false
 
 local Players = game:GetService("Players")
-local PathfindingService = game:GetService("PathfindingService")
-local StarterGui = game:GetService("StarterGui")
-
 local LocalPlayer = Players.LocalPlayer
 
---==================================================
--- SETTINGS
---==================================================
+local currentTarget = nil
+local autoWinMode = "One at a time"
 
 local AUTO_WIN_INTERVAL = 3
 local TARGETS_BEFORE_PAUSE = 5
 local PAUSE_DURATION = 10
 
-local WALK_SPEED = 20
-local TARGET_CHECK_INTERVAL = 0.1
-local PATH_UPDATE_INTERVAL = 0.8
-local WAYPOINT_DISTANCE = 3
-local TARGET_DISTANCE = 4
+local hitCount = 0
+local pauseUntil = 0
 
---==================================================
--- STATE
---==================================================
+CreateSavedToggle(CombatTab, {
+    Name = "Auto Win",
+    CurrentValue = _G.AutoWin,
+    Callback = function(v)
+        _G.AutoWin = v
 
-local AutoWinEnabled = false
-local AutoWinMode = "One at a time"
-
-local generation = 0
-local visitedTargets = {}
-
---==================================================
--- NOTIFICATIONS
---==================================================
-
-local function Notify(message)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "Auto Win",
-            Text = message,
-            Duration = 4
-        })
-    end)
-end
-
---==================================================
--- CHARACTER
---==================================================
-
-local function GetCharacter()
-    local character = LocalPlayer.Character
-
-    if not character then
-        return nil, nil, nil
+        if not v then
+            currentTarget = nil
+            hitCount = 0
+            pauseUntil = 0
+        end
     end
+})
 
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    local root = character:FindFirstChild("HumanoidRootPart")
+CombatTab:CreateDropdown({
+    Name = "Auto Win Mode",
+    Options = {"One at a time", "Slap All"},
+    CurrentOption = {"One at a time"},
+    MultipleOptions = false,
+    Callback = function(option)
+        if typeof(option) == "table" then
+            autoWinMode = option[1] or "One at a time"
+        else
+            autoWinMode = option or "One at a time"
+        end
 
-    if not humanoid or humanoid.Health <= 0 or not root then
-        return character, nil, nil
+        currentTarget = nil
+        hitCount = 0
+        pauseUntil = 0
     end
+})
 
-    return character, humanoid, root
-end
-
-local function GetRoot(player)
-    if not player or not player.Character then
+-- Returns the character's root only if the player is alive.
+local function GetRoot(plr)
+    if not plr then
         return nil
     end
 
-    local character = player.Character
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    local root = character:FindFirstChild("HumanoidRootPart")
+    local char = plr.Character
+    if not char then
+        return nil
+    end
 
-    if not humanoid or humanoid.Health <= 0 or not root then
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+
+    if not hum or hum.Health <= 0 or not root then
         return nil
     end
 
     return root
 end
 
---==================================================
--- RAGDOLL CHECK
---==================================================
-
-local function IsRagdolled(player)
-    local character = player and player.Character
-
-    if not character then
+local function IsRagdolled(plr)
+    local char = plr and plr.Character
+    if not char then
         return true
     end
 
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-
-    if not humanoid or humanoid.Health <= 0 then
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then
         return true
     end
 
-    local ragdoll = character:FindFirstChild("Ragdolled", true)
-
-    if ragdoll and ragdoll:IsA("BoolValue") then
-        return ragdoll.Value
+    local ragdollValue = char:FindFirstChild("Ragdolled", true)
+    if ragdollValue and ragdollValue:IsA("BoolValue") then
+        return ragdollValue.Value
     end
 
-    return character:GetAttribute("Ragdolled") == true
-        or humanoid.PlatformStand
+    return hum.PlatformStand
 end
 
---==================================================
--- TARGET VALIDATION
---==================================================
+local function GetClosestPlayer(skipRagdolled)
+    local myChar = LocalPlayer.Character
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
 
-local function IsValidTarget(player, skipRagdolled)
-    if not player or player == LocalPlayer then
-        return false
-    end
-
-    if not GetRoot(player) then
-        return false
-    end
-
-    if skipRagdolled and IsRagdolled(player) then
-        return false
-    end
-
-    return true
-end
-
---==================================================
--- CLOSEST PLAYER
---==================================================
-
-local function GetClosestPlayer(skipVisited, skipRagdolled)
-    local _, humanoid, root = GetCharacter()
-
-    if not humanoid or not root then
+    if not myHum or myHum.Health <= 0 or not myRoot then
         return nil
     end
 
-    local closest = nil
-    local shortestDistance = math.huge
+    local closestPlayer = nil
+    local closestDistance = math.huge
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        if IsValidTarget(player, skipRagdolled) then
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local targetRoot = GetRoot(plr)
 
-            if not skipVisited or not visitedTargets[player] then
-                local targetRoot = GetRoot(player)
-
+            if targetRoot and not (skipRagdolled and IsRagdolled(plr)) then
                 local distance =
-                    (root.Position - targetRoot.Position).Magnitude
+                    (myRoot.Position - targetRoot.Position).Magnitude
 
-                if distance < shortestDistance then
-                    shortestDistance = distance
-                    closest = player
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = plr
                 end
             end
         end
     end
 
-    return closest
+    return closestPlayer
 end
 
---==================================================
--- TELEPORT
---==================================================
+task.spawn(function()
+    while true do
+        task.wait(AUTO_WIN_INTERVAL)
 
-local function TeleportToPlayer(player)
-    local _, humanoid, root = GetCharacter()
-    local targetRoot = GetRoot(player)
-
-    if not humanoid or not root or not targetRoot then
-        return false
-    end
-
-    root.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
-
-    return true
-end
-
---==================================================
--- PATHFINDING
---==================================================
-
-local function CalculatePath(startPosition, endPosition)
-    local path = PathfindingService:CreatePath({
-        AgentRadius = 2,
-        AgentHeight = 5,
-        AgentCanJump = true,
-        AgentCanClimb = true,
-        WaypointSpacing = 3
-    })
-
-    local success = pcall(function()
-        path:ComputeAsync(startPosition, endPosition)
-    end)
-
-    if not success or path.Status ~= Enum.PathStatus.Success then
-        return nil
-    end
-
-    return path
-end
-
---==================================================
--- WALK TO TARGET
---==================================================
-
-local function WalkToTargets(myGeneration)
-
-    local activeTarget = nil
-    local waypoints = {}
-    local waypointIndex = 1
-
-    local lastPathUpdate = 0
-    local lastTargetPosition = nil
-
-    local lastProgressPosition = nil
-    local lastProgressTime = os.clock()
-
-    local function IsRunning()
-        return AutoWinEnabled
-            and AutoWinMode == "Walk to target"
-            and generation == myGeneration
-    end
-
-    while IsRunning() do
-        task.wait(TARGET_CHECK_INTERVAL)
-
-        local _, humanoid, root = GetCharacter()
-
-        if not humanoid or not root then
-            activeTarget = nil
-            waypoints = {}
-            continue
-        end
-
-        humanoid.WalkSpeed = WALK_SPEED
-        humanoid.AutoRotate = true
-
-        -- Validate target
-        if not IsValidTarget(activeTarget, true) then
-            activeTarget = nil
-            waypoints = {}
-        end
-
-        -- Select next target
-        if not activeTarget then
-            activeTarget = GetClosestPlayer(true, true)
-
-            if not activeTarget then
-                visitedTargets = {}
-                activeTarget = GetClosestPlayer(false, true)
-            end
-
-            if not activeTarget then
-                humanoid:MoveTo(root.Position)
-                continue
-            end
-
-            lastPathUpdate = 0
-            lastTargetPosition = nil
-            lastProgressPosition = root.Position
-            lastProgressTime = os.clock()
-        end
-
-        local targetRoot = GetRoot(activeTarget)
-
-        if not targetRoot then
-            activeTarget = nil
-            continue
-        end
-
-        local targetPosition = targetRoot.Position
-
-        local distance =
-            (root.Position - targetPosition).Magnitude
-
-        -- Target reached
-        if distance <= TARGET_DISTANCE then
-            visitedTargets[activeTarget] = true
-
-            activeTarget = nil
-            waypoints = {}
-
-            task.wait(0.15)
-            continue
-        end
-
-        local now = os.clock()
-
-        local targetMoved =
-            not lastTargetPosition
-            or (targetPosition - lastTargetPosition).Magnitude >= 6
-
-        local pathExpired =
-            now - lastPathUpdate >= PATH_UPDATE_INTERVAL
-
-        -- Recalculate path
-        if targetMoved or pathExpired or #waypoints == 0 then
-            lastPathUpdate = now
-            lastTargetPosition = targetPosition
-
-            local path = CalculatePath(
-                root.Position,
-                targetPosition
-            )
-
-            if path then
-                waypoints = path:GetWaypoints()
-                waypointIndex = math.min(2, #waypoints)
-            else
-                waypoints = {}
-            end
-        end
-
-        -- Follow waypoints
-        local waypoint = waypoints[waypointIndex]
-
-        if waypoint then
-            local waypointDistance =
-                (root.Position - waypoint.Position).Magnitude
-
-            if waypointDistance <= WAYPOINT_DISTANCE then
-                waypointIndex += 1
-                waypoint = waypoints[waypointIndex]
-            end
-        end
-
-        if waypoint then
-            if waypoint.Action == Enum.PathWaypointAction.Jump then
-                humanoid.Jump = true
-            end
-
-            humanoid:MoveTo(waypoint.Position)
-        else
-            -- Fallback movement
-            humanoid:MoveTo(targetPosition)
-        end
-
-        -- Stuck detection
-        if not lastProgressPosition then
-            lastProgressPosition = root.Position
-        end
-
-        local progress =
-            (root.Position - lastProgressPosition).Magnitude
-
-        if progress >= 0.5 then
-            lastProgressPosition = root.Position
-            lastProgressTime = now
-
-        elseif now - lastProgressTime >= 2.5 then
-            humanoid.Jump = true
-            lastPathUpdate = 0
-
-            lastProgressPosition = root.Position
-            lastProgressTime = now
-        end
-    end
-
-    -- Stop movement only if this is still the active task
-    if generation == myGeneration then
-        local _, humanoid, root = GetCharacter()
-
-        if humanoid and root then
-            humanoid:MoveTo(root.Position)
-        end
-    end
-end
-
---==================================================
--- TELEPORT MODES
---==================================================
-
-local function RunTeleportModes(myGeneration)
-
-    local currentTarget = nil
-    local hitCount = 0
-
-    local nextTeleport = 0
-    local pauseUntil = 0
-
-    local visited = {}
-
-    while AutoWinEnabled
-        and generation == myGeneration do
-
-        task.wait(0.1)
-
-        if AutoWinMode == "Walk to target" then
-            return
-        end
-
-        if os.clock() < nextTeleport then
+        if not _G.AutoWin then
             continue
         end
 
@@ -993,167 +718,51 @@ local function RunTeleportModes(myGeneration)
             continue
         end
 
-        -- ONE AT A TIME
-        if AutoWinMode == "One at a time" then
+        local ok, err = pcall(function()
+            local myChar = LocalPlayer.Character
+            local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
 
-            if not IsValidTarget(currentTarget, false) then
-                currentTarget = GetClosestPlayer(false, false)
+            if not myHum or myHum.Health <= 0 or not myRoot then
+                return
             end
 
-            if currentTarget then
-                if TeleportToPlayer(currentTarget) then
-                    nextTeleport = os.clock() + AUTO_WIN_INTERVAL
-                else
-                    currentTarget = nil
-                    nextTeleport = os.clock() + 0.25
+            if autoWinMode == "One at a time" then
+                -- Keep the same living target, even while ragdolled.
+                if not currentTarget or not GetRoot(currentTarget) then
+                    currentTarget = GetClosestPlayer(false)
+                end
+
+                local targetRoot = GetRoot(currentTarget)
+
+                if targetRoot then
+                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
                 end
             else
-                nextTeleport = os.clock() + 0.25
-            end
+                -- Slap All: skip ragdolled players.
+                currentTarget = GetClosestPlayer(true)
 
-        -- SLAP ALL
-        elseif AutoWinMode == "Slap All" then
+                local targetRoot = GetRoot(currentTarget)
 
-            currentTarget = GetClosestPlayer(true, true)
+                if targetRoot and not IsRagdolled(currentTarget) then
+                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
 
-            if not currentTarget then
-                visited = {}
-                currentTarget = GetClosestPlayer(false, true)
-            end
-
-            if currentTarget then
-                if TeleportToPlayer(currentTarget) then
-
-                    visited[currentTarget] = true
                     hitCount += 1
-
-                    nextTeleport = os.clock() + AUTO_WIN_INTERVAL
 
                     if hitCount >= TARGETS_BEFORE_PAUSE then
                         hitCount = 0
-                        visited = {}
-
                         pauseUntil = os.clock() + PAUSE_DURATION
+                        currentTarget = nil
                     end
-                else
-                    nextTeleport = os.clock() + 0.25
                 end
-            else
-                nextTeleport = os.clock() + 0.25
             end
+        end)
+
+        if not ok then
+            warn("[Auto Win] Error:", err)
         end
-    end
-end
-
---==================================================
--- START / STOP
---==================================================
-
-local function StartAutoWin()
-    generation += 1
-
-    local myGeneration = generation
-
-    if not AutoWinEnabled then
-        return
-    end
-
-    task.spawn(function()
-        if AutoWinMode == "Walk to target" then
-            WalkToTargets(myGeneration)
-        else
-            RunTeleportModes(myGeneration)
-        end
-    end)
-end
-
-local function StopAutoWin()
-    AutoWinEnabled = false
-    generation += 1
-
-    visitedTargets = {}
-
-    local _, humanoid, root = GetCharacter()
-
-    if humanoid and root then
-        humanoid:MoveTo(root.Position)
-    end
-end
-
---==================================================
--- RAYFIELD TOGGLE
---==================================================
-
-CombatTab:CreateToggle({
-    Name = "Auto Win",
-    CurrentValue = false,
-
-    Callback = function(value)
-
-        if value then
-            AutoWinEnabled = true
-
-            visitedTargets = {}
-
-            StartAutoWin()
-
-            Notify("Auto Win enabled")
-        else
-            StopAutoWin()
-
-            Notify("Auto Win disabled")
-        end
-    end
-})
-
---==================================================
--- RAYFIELD DROPDOWN
---==================================================
-
-CombatTab:CreateDropdown({
-    Name = "Auto Win Mode",
-
-    Options = {
-        "One at a time",
-        "Slap All",
-        "Walk to target"
-    },
-
-    CurrentOption = {"One at a time"},
-    MultipleOptions = false,
-
-    Callback = function(option)
-
-        if typeof(option) == "table" then
-            AutoWinMode = option[1] or "One at a time"
-        else
-            AutoWinMode = option or "One at a time"
-        end
-
-        visitedTargets = {}
-
-        if AutoWinEnabled then
-            StartAutoWin()
-            Notify(AutoWinMode .. " started")
-        end
-    end
-})
-
---==================================================
--- RESPAWN HANDLING
---==================================================
-
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-
-    if AutoWinEnabled then
-        StartAutoWin()
     end
 end)
-
-print("[Auto Win] Rayfield version loaded!")
-
-
 
 local Players = game:GetService("Players")
 
