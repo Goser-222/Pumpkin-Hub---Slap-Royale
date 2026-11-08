@@ -348,6 +348,14 @@ local CombatTab=Window:CreateTab("Combat","swords")
 local ItemsTab=Window:CreateTab("Items","package")
 local ESPTab=Window:CreateTab("ESP","eye")
 local OtherTab=Window:CreateTab("Other","settings")
+local GoodPeopleTab = Window:CreateTab("Good People", "heart")
+
+GoodPeopleTab:CreateSection("Title")
+
+GoodPeopleTab:CreateParagraph({
+    Title = "SVCLUTCHER",
+    Content = "Thank you for being the first to make a video on Pumpkin Hub! Sub to SVCLUTCHER on YT"
+})
 
 CombatTab:CreateSlider({
 	Name="Hitbox Size (Others + NPCs)",
