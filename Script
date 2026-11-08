@@ -351,7 +351,7 @@ local OtherTab=Window:CreateTab("Other","settings")
 local SafetyTab = Window:CreateTab("Safety", "shield-check")
 local GoodPeopleTab = Window:CreateTab("Good People", "heart")
 
-GoodPeopleTab:CreateSection("Title")
+GoodPeopleTab:CreateSection("Good people")
 
 GoodPeopleTab:CreateParagraph({
     Title = "SVCLUTCHER",
