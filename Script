@@ -348,6 +348,7 @@ local CombatTab=Window:CreateTab("Combat","swords")
 local ItemsTab=Window:CreateTab("Items","package")
 local ESPTab=Window:CreateTab("ESP","eye")
 local OtherTab=Window:CreateTab("Other","settings")
+local SafetyTab = Window:CreateTab("Safety", "shield-check")
 local GoodPeopleTab = Window:CreateTab("Good People", "heart")
 
 GoodPeopleTab:CreateSection("Title")
@@ -2803,8 +2804,6 @@ OtherTab:CreateButton({
 		end
 	end
 })
-
-local SafetyTab = Window:CreateTab("Safety", "shield-check")
 
 CreateSavedToggle(SafetyTab, {
 	Name = "Anti Acid",
