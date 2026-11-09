@@ -3672,6 +3672,9 @@ local BusJumping = ReplicatedStorage.Remotes.BusJumping
 -- STATE
 --==================================================
 
+-- Modes: Normal (recommended), Fast, Slow.
+GetItemsMode = "Normal"
+
 local blocked = false
 local recoveryRunning = false
 local lastPicked = nil
@@ -3685,8 +3688,6 @@ local ContinueAfterBusRunning = false
 local CollectionRunning = false
 local CollectionCooldown = false
 
--- Fast: first collection = 5, then 8
--- Slow: first collection = 2, then 4
 local CollectionCycle = 0
 
 --==================================================
@@ -4024,7 +4025,11 @@ local function TPWaitLookPickup(tool)
 		)
 	end
 
-	task.wait(GetItemsMode == "Fast" and 0.3 or 1)
+	-- Wait before pickup.
+	task.wait(
+		GetItemsMode == "Fast" and 0.3
+		or (GetItemsMode == "Normal" and 0.4 or 1)
+	)
 
 	if not GetItemsEnabled then
 		return false
@@ -4049,7 +4054,11 @@ local function TPWaitLookPickup(tool)
 
 	local success = Pickup(handle)
 
-	task.wait(GetItemsMode == "Fast" and 0.2 or 0.5)
+	-- Wait after pickup.
+	task.wait(
+		GetItemsMode == "Fast" and 0.2
+		or (GetItemsMode == "Normal" and 0.3 or 0.5)
+	)
 
 	return success
 end
@@ -4216,6 +4225,36 @@ local function CollectItems(amount)
 end
 
 --==================================================
+-- GET ITEMS MODE
+--==================================================
+
+CreateSavedDropdown(ItemsTab, {
+	Name = "Get Items Mode",
+
+	Options = {
+		"Normal (Recommended)",
+		"Fast",
+		"Slow"
+	},
+
+	CurrentOption = GetItemsMode == "Fast" and "Fast"
+		or (GetItemsMode == "Slow" and "Slow" or "Normal (Recommended)"),
+
+	Callback = function(value)
+
+		if value == "Fast" then
+			GetItemsMode = "Fast"
+
+		elseif value == "Slow" then
+			GetItemsMode = "Slow"
+
+		else
+			GetItemsMode = "Normal"
+		end
+	end
+})
+
+--==================================================
 -- CONTINUE ITEM COLLECTION AFTER BUS
 --==================================================
 
@@ -4227,10 +4266,10 @@ CreateSavedToggle(ItemsTab, {
 
 		ContinueAfterBusEnabled = v
 
-if v then
-    ILEnabled = false
-    InstantLandingToggle:Set(false)
-end
+		if v then
+			ILEnabled = false
+			InstantLandingToggle:Set(false)
+		end
 
 		if not v then
 
@@ -4398,9 +4437,13 @@ local function StartBusCollection()
 
 	task.spawn(function()
 		while true do
+
 			if GetItemsEnabled then
+
 				for _, obj in ipairs(workspace:GetDescendants()) do
+
 					if obj.Name == "Glider" then
+
 						pcall(function()
 							obj:Destroy()
 						end)
@@ -4453,6 +4496,10 @@ local function StartBusCollection()
 
 		if GetItemsMode == "Fast" then
 			amount = CollectionCycle == 0 and 5 or 8
+
+		elseif GetItemsMode == "Normal" then
+			amount = CollectionCycle == 0 and 4 or 8
+
 		else
 			amount = CollectionCycle == 0 and 2 or 4
 		end
@@ -4467,7 +4514,10 @@ local function StartBusCollection()
 			-- Mode-specific cooldown after the collection finishes.
 			CollectionCooldown = true
 
-			task.wait(GetItemsMode == "Fast" and 3 or 3)
+			task.wait(
+				GetItemsMode == "Fast" and 3
+				or (GetItemsMode == "Normal" and 2 or 3)
+			)
 
 			CollectionCooldown = false
 		end
@@ -4562,7 +4612,9 @@ lp.CharacterAdded:Connect(function(c)
 	SetupBusMonitor(c)
 end)
 
-
+--==================================================
+-- MAIN COLLECTION LOOP
+--==================================================
 
 task.spawn(function()
 
@@ -4580,6 +4632,10 @@ task.spawn(function()
 
 			if GetItemsMode == "Fast" then
 				amount = CollectionCycle == 0 and 5 or 8
+
+			elseif GetItemsMode == "Normal" then
+				amount = CollectionCycle == 0 and 4 or 8
+
 			else
 				amount = CollectionCycle == 0 and 2 or 4
 			end
@@ -4594,7 +4650,10 @@ task.spawn(function()
 				-- Mode-specific cooldown after every collection.
 				CollectionCooldown = true
 
-				task.wait(GetItemsMode == "Fast" and 5 or 8)
+				task.wait(
+					GetItemsMode == "Fast" and 5
+					or (GetItemsMode == "Normal" and 2 or 8)
+				)
 
 				CollectionCooldown = false
 			end
