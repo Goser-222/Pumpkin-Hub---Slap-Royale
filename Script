@@ -3654,7 +3654,6 @@ task.spawn(function()
     end
 end)
 
-
 --==================================================
 -- GET ITEMS
 --==================================================
@@ -3686,56 +3685,9 @@ local ContinueAfterBusRunning = false
 local CollectionRunning = false
 local CollectionCooldown = false
 
--- Fast:   first 5, then 8
--- Medium: first 3, then 8
--- Slow:   first 2, then 4
+-- Fast: first collection = 5, then 8
+-- Slow: first collection = 2, then 4
 local CollectionCycle = 0
-
---==================================================
--- MODE SETTINGS
---==================================================
-
-local function GetCollectionAmount()
-	if GetItemsMode == "Fast" then
-		return CollectionCycle == 0 and 5 or 8
-
-	elseif GetItemsMode == "Medium" then
-		return CollectionCycle == 0 and 3 or 8
-
-	else
-		return CollectionCycle == 0 and 2 or 4
-	end
-end
-
-local function GetTeleportDelay()
-	if GetItemsMode == "Fast" then
-		return 0.3
-	elseif GetItemsMode == "Medium" then
-		return 0.4
-	else
-		return 1
-	end
-end
-
-local function GetPickupDelay()
-	if GetItemsMode == "Fast" then
-		return 0.2
-	elseif GetItemsMode == "Medium" then
-		return 0.4
-	else
-		return 0.5
-	end
-end
-
-local function GetCollectionCooldown()
-	if GetItemsMode == "Fast" then
-		return 5
-	elseif GetItemsMode == "Medium" then
-		return 2
-	else
-		return 8
-	end
-end
 
 --==================================================
 -- ALLOWED ITEMS
@@ -3844,12 +3796,14 @@ local function FindAllowedTool(maxDistance)
 	local closestDistance = maxDistance or math.huge
 
 	for _, tool in ipairs(Items:GetChildren()) do
+
 		if tool:IsA("Tool")
 			and AllowedTools[tool.Name] then
 
 			local handle = tool:FindFirstChild("Handle")
 
 			if handle then
+
 				local distance =
 					(handle.Position - hrp.Position).Magnitude
 
@@ -4070,8 +4024,7 @@ local function TPWaitLookPickup(tool)
 		)
 	end
 
-	-- MODE-SPECIFIC TELEPORT WAIT
-	task.wait(GetTeleportDelay())
+	task.wait(GetItemsMode == "Fast" and 0.3 or 0.5)
 
 	if not GetItemsEnabled then
 		return false
@@ -4096,8 +4049,7 @@ local function TPWaitLookPickup(tool)
 
 	local success = Pickup(handle)
 
-	-- MODE-SPECIFIC PICKUP WAIT
-	task.wait(GetPickupDelay())
+	task.wait(GetItemsMode == "Fast" and 0.2 or 0.4)
 
 	return success
 end
@@ -4133,23 +4085,38 @@ local function GetOrderedItems()
 
 				elseif obj.Name == "Potion of Strength" then
 
-					table.insert(strengthList, obj)
+					table.insert(
+						strengthList,
+						obj
+					)
 
 				elseif obj.Name == "Bull's essence" then
 
-					table.insert(bullList, obj)
+					table.insert(
+						bullList,
+						obj
+					)
 
 				elseif obj.Name == "Boba" then
 
-					table.insert(bobaList, obj)
+					table.insert(
+						bobaList,
+						obj
+					)
 
 				elseif obj.Name == "Speed Potion" then
 
-					table.insert(speedList, obj)
+					table.insert(
+						speedList,
+						obj
+					)
 
 				elseif obj.Name == "Frog Potion" then
 
-					table.insert(frogList, obj)
+					table.insert(
+						frogList,
+						obj
+					)
 				end
 			end
 		end
@@ -4215,6 +4182,7 @@ local function CollectItems(amount)
 
 			if tool and tool.Parent then
 
+				-- Bomb may only be teleported to once.
 				if tool.Name == "Bomb"
 					and BombTeleportedThisRound then
 
@@ -4259,12 +4227,18 @@ CreateSavedToggle(ItemsTab, {
 
 		ContinueAfterBusEnabled = v
 
-		if v then
-			ILEnabled = false
-			InstantLandingToggle:Set(false)
-		end
+if v then
+    ILEnabled = false
+    InstantLandingToggle:Set(false)
+end
 
 		if not v then
+
+			-- Disabled:
+			-- stay in the bus
+			-- do not jump
+			-- do not teleport after bus
+			-- do not collect after bus
 
 			GetItemsEnabled = false
 
@@ -4293,6 +4267,7 @@ local function StartBusCollection()
 
 	ContinueAfterBusRunning = true
 
+	-- Stop normal item collection while inside bus.
 	GetItemsEnabled = false
 	CollectionRunning = false
 	CollectionCooldown = false
@@ -4300,6 +4275,7 @@ local function StartBusCollection()
 
 	task.wait(0.5)
 
+	-- Check toggle before jumping.
 	if not ContinueAfterBusEnabled then
 
 		GetItemsEnabled = false
@@ -4314,17 +4290,20 @@ local function StartBusCollection()
 
 	if ContinueAfterBusEnabled then
 
+		-- Jump out first
 		pcall(function()
 			BusJumping:FireServer()
 		end)
 
+		-- Wait 0.1 seconds after jumping
 		task.wait(0.1)
 
 		if not ContinueAfterBusEnabled then
-			ContinueAfterBusRunning = false
 			return
 		end
 
+		-- Look for a tool after the jump.
+		-- Retry briefly in case the items have not loaded yet.
 		local tool = nil
 
 		for i = 1, 20 do
@@ -4342,6 +4321,7 @@ local function StartBusCollection()
 			task.wait(0.05)
 		end
 
+		-- Teleport after the tool is found
 		if ContinueAfterBusEnabled and tool and tool.Parent then
 			TPToToolWithoutPickup(tool)
 		end
@@ -4469,17 +4449,25 @@ local function StartBusCollection()
 	if ContinueAfterBusEnabled
 		and GetItemsEnabled then
 
-		local amount = GetCollectionAmount()
+		local amount
 
-		local picked = CollectItems(amount)
+		if GetItemsMode == "Fast" then
+			amount = CollectionCycle == 0 and 5 or 8
+		else
+			amount = CollectionCycle == 0 and 3 or 6
+		end
+
+		local picked =
+			CollectItems(amount)
 
 		if picked > 0 then
 
 			CollectionCycle += 1
 
+			-- Mode-specific cooldown after the collection finishes.
 			CollectionCooldown = true
 
-			task.wait(GetCollectionCooldown())
+			task.wait(GetItemsMode == "Fast" and 3 or 3)
 
 			CollectionCooldown = false
 		end
@@ -4527,6 +4515,7 @@ local function SetupBusMonitor(c)
 
 		if not ContinueAfterBusEnabled then
 
+			-- Stay in bus.
 			GetItemsEnabled = false
 
 			return
@@ -4573,9 +4562,7 @@ lp.CharacterAdded:Connect(function(c)
 	SetupBusMonitor(c)
 end)
 
---==================================================
--- MAIN COLLECTION LOOP
---==================================================
+
 
 task.spawn(function()
 
@@ -4589,17 +4576,25 @@ task.spawn(function()
 			and not CollectionRunning
 			and CountdownAllowed() then
 
-			local amount = GetCollectionAmount()
+			local amount
 
-			local picked = CollectItems(amount)
+			if GetItemsMode == "Fast" then
+				amount = CollectionCycle == 0 and 5 or 8
+			else
+				amount = CollectionCycle == 0 and 2 or 4
+			end
+
+			local picked =
+				CollectItems(amount)
 
 			if picked > 0 then
 
 				CollectionCycle += 1
 
+				-- Mode-specific cooldown after every collection.
 				CollectionCooldown = true
 
-				task.wait(GetCollectionCooldown())
+				task.wait(GetItemsMode == "Fast" and 5 or 8)
 
 				CollectionCooldown = false
 			end
@@ -4672,7 +4667,6 @@ task.spawn(function()
 		task.wait(0.5)
 	end
 end)
-
 
 
 local lastSlap = 0
