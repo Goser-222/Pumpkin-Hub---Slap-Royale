@@ -1,1 +1,1 @@
-here is loadstring loadstring(game:HttpGet("https://raw.githubusercontent.com/Goser-222/Pumpkin-Hub---Slap-Royale/refs/heads/main/Script"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Goser-222/Pumpkin-Hub---Slap-Royale/refs/heads/main/Script"))()
