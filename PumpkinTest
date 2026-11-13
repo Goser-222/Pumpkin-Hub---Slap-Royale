@@ -1,1 +1,5242 @@
+-- Developer note!
+-- This script is made for the mode Slap Royale in the game Slap Battles.
+-- Low ping is recommended because delays can cause kicks so the recommended ping is 0 to 100 if your below this you should be fine.
+-- This script has features that no other current script has (when writing this) and yes they work like anti acid and auto win.
+-- This script has one of the best slap auras in slap royale so you will be able to kill exploiters easy as pie.
+-- Huge thank you for choosing Pumpkin Hub!
 
+local Players=game:GetService("Players")
+local LocalPlayer=Players.LocalPlayer
+local Char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local ItemRemote=ReplicatedStorage.Remotes.Item
+local BusJumping=ReplicatedStorage.Remotes.BusJumping
+local UIS=game:GetService("UserInputService")
+local Camera=workspace.CurrentCamera
+local CollectionService=game:GetService("CollectionService")
+
+local RayParams=RaycastParams.new()
+RayParams.FilterDescendantsInstances={Char}
+RayParams.FilterType=Enum.RaycastFilterType.Exclude
+
+for _,player in ipairs(Players:GetPlayers()) do
+	local c=player.Character or player.CharacterAdded:Wait()
+	if c:FindFirstChild("HumanoidRootPart") then
+		CollectionService:AddTag(c,"PumpkinPlayer")
+	end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+	plr.CharacterAdded:Connect(function(c)
+		CollectionService:AddTag(c,"PumpkinPlayer")
+	end)
+end)
+
+local function ClearLine(a,b)
+	local r=workspace:Raycast(a,b-a,RayParams)
+	return not r
+end
+
+local function ClearFromTool(toolPos,targetPos)
+	local r=workspace:Raycast(toolPos,targetPos-toolPos,RayParams)
+	return not r
+end
+
+local function AvoidTools(pos)
+	local newPos=pos
+	for _,obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("Tool") then
+			local handle=obj:FindFirstChild("Handle")
+			if handle then
+				local flatPos=Vector3.new(newPos.X,handle.Position.Y,newPos.Z)
+				if (flatPos-handle.Position).Magnitude<3 then
+					newPos=newPos+Camera.CFrame.RightVector*6
+				end
+			end
+		end
+	end
+	return newPos
+end
+
+local function Ground(pos)
+	local r=workspace:Raycast(pos+Vector3.new(0,40,0),Vector3.new(0,-200,0),RayParams)
+	if r then
+		local p=r.Position+Vector3.new(0,3,0)
+		return AvoidTools(p)
+	else
+		return AvoidTools(pos+Vector3.new(0,3,0))
+	end
+end
+
+local AutoUseList={
+	["Speed Potion"]=true,
+	["Potion of Strength"]=true,
+	["Bull's essence"]=true,
+	["Frog Potion"]=true,
+	["Speed Brew"]=true,
+	["Frog Brew"]=true,
+	["Strength Brew"]=true,
+	["Boba"]=true
+}
+
+local function PickupTool(tool)
+	local id=tool:GetAttribute("ItemId")
+	if id then
+		ItemRemote:FireServer(id)
+		local gui=tool:FindFirstChild("ItemGui")
+		if gui then gui.Enabled=false end
+	end
+end
+
+local function EnsureNotOnTool(target,toolPos)
+	local flatTarget=Vector3.new(target.X,toolPos.Y,target.Z)
+	if (flatTarget-toolPos).Magnitude<2 then
+		local alt=Ground(toolPos+Camera.CFrame.RightVector*5)
+		if math.abs(alt.Y-toolPos.Y)<=6 and ClearFromTool(toolPos,alt) then
+			return alt
+		end
+		local alt2=Ground(toolPos-Camera.CFrame.RightVector*5)
+		if math.abs(alt2.Y-toolPos.Y)<=6 and ClearFromTool(toolPos,alt2) then
+			return alt2
+		end
+	end
+	return target
+end
+
+local function BestSide(toolPos)
+	local hrp=Char:FindFirstChild("HumanoidRootPart")
+	local baseY=toolPos.Y
+	if not hrp then
+		local g=Vector3.new(toolPos.X,baseY+3,toolPos.Z)
+		return EnsureNotOnTool(AvoidTools(g),toolPos)
+	end
+	local sides={
+		Vector3.new(toolPos.X,baseY,toolPos.Z)+Camera.CFrame.RightVector*5,
+		Vector3.new(toolPos.X,baseY,toolPos.Z)-Camera.CFrame.RightVector*5,
+		Vector3.new(toolPos.X,baseY,toolPos.Z)+Camera.CFrame.LookVector*5,
+		Vector3.new(toolPos.X,baseY,toolPos.Z)-Camera.CFrame.LookVector*5
+	}
+	local best=nil
+	local bestDist=math.huge
+	for _,pos in ipairs(sides) do
+		local g=AvoidTools(pos)
+		if math.abs(g.Y-baseY)<=2 then
+			if ClearFromTool(toolPos,g) then
+				local d=(g-hrp.Position).Magnitude
+				if d<bestDist then
+					bestDist=d
+					best=g
+				end
+			end
+		end
+	end
+	if best then
+		return EnsureNotOnTool(best,toolPos)
+	end
+	local fallback=Vector3.new(toolPos.X,baseY,toolPos.Z)
+	return EnsureNotOnTool(AvoidTools(fallback),toolPos)
+end
+
+local function SafeTP(tool)
+	local hrp=Char:FindFirstChild("HumanoidRootPart")
+	local handle=tool:FindFirstChild("Handle")
+	if not hrp or not handle then return end
+	local target=BestSide(handle.Position)
+	target=AvoidTools(target)
+	hrp.CFrame=CFrame.new(target,hrp.Position+hrp.CFrame.LookVector)
+end
+
+local function TPAndPickup(tool)
+	SafeTP(tool)
+	task.wait(0.1)
+	PickupTool(tool)
+	task.wait(0.5)
+end
+
+local Player = game.Players.LocalPlayer
+local Char = Player.Character or Player.CharacterAdded:Wait()
+
+local teleportCount = 0
+local lastTransparency = 1
+local ILEnabled = false
+local CanCount = false
+
+local function Ground(pos)
+	local ray = Ray.new(pos, Vector3.new(0, -500, 0))
+	local part, hitPos = workspace:FindPartOnRay(ray)
+	return hitPos or pos
+end
+
+local function InstantLand()
+	if teleportCount >= 1 then return end
+
+	local c = Player.Character
+	if not c then return end
+
+	local hrp = c:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local crystal = workspace:FindFirstChild("CrystalBlue", true)
+	if not crystal then return end
+
+	local target = Ground(crystal.Position)
+	hrp.CFrame = CFrame.new(target, hrp.Position + hrp.CFrame.LookVector)
+
+	teleportCount += 1
+	ILEnabled = false
+	CanCount = false
+end
+
+Player.CharacterAdded:Connect(function(c)
+	Char = c
+	teleportCount = 0
+	lastTransparency = 1
+	CanCount = false
+end)
+
+task.spawn(function()
+	while true do
+		local c = Player.Character
+		if ILEnabled and teleportCount < 1 and c then
+			local head = c:FindFirstChild("Head")
+			if head then
+				local t = head.Transparency
+
+				if t == 1 then
+					CanCount = true
+				end
+
+				if t == 0 and lastTransparency ~= 0 and CanCount then
+					InstantLand()
+				end
+
+				lastTransparency = t
+			else
+				lastTransparency = 1
+			end
+		else
+			lastTransparency = 1
+		end
+
+		task.wait(0.05)
+	end
+end)
+
+local EBJEnabled=false
+local ILEnabled=false
+local RemoveZoneEnabled=false
+local DeleteSeatsEnabled=false
+local AutoUseEnabled=false
+local GetItemsEnabled=false
+local GetItemsMode = "Slow"
+local AutoPickupEnabled=false
+local BombPicked=false
+local PlayerESPEnabled=false
+local ItemESPEnabled=false
+local globalHRPSize=1
+local hrpGlobalSliderUsed=false
+
+local function ApplyHighlight(adorn)
+	if adorn and adorn.Parent and not adorn.Parent:FindFirstChild("PumpkinHighlight") then
+		local h=Instance.new("Highlight")
+		h.Name="PumpkinHighlight"
+		h.Adornee=adorn
+		h.FillColor=Color3.fromRGB(255,255,0)
+		h.OutlineColor=Color3.fromRGB(0,0,0)
+		h.FillTransparency=0.7
+		h.OutlineTransparency=0
+		h.Parent=adorn.Parent
+	end
+end
+
+local function CreateNameTag(char)
+	if char and not char:FindFirstChild("PumpkinNameTag") then
+		local hrp=char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			local billboard=Instance.new("BillboardGui")
+			billboard.Name="PumpkinNameTag"
+			billboard.Size=UDim2.new(0,150,0,40)
+			billboard.Adornee=hrp
+			billboard.AlwaysOnTop=true
+			billboard.Parent=char
+			local label=Instance.new("TextLabel")
+			label.Size=UDim2.new(1,0,1,0)
+			label.BackgroundTransparency=1
+			label.TextScaled=true
+			label.Font=Enum.Font.GothamBold
+			label.TextColor3=Color3.fromRGB(0,200,255)
+			label.TextStrokeTransparency=0.3
+			label.TextStrokeColor3=Color3.new(0,0,0)
+			label.Text=char.Name
+			label.Parent=billboard
+		end
+	end
+end
+
+local function CreateToolTag(tool)
+	if tool and tool.Parent==workspace.Items and not tool:FindFirstChild("PumpkinItemTag") then
+		local handle=tool:FindFirstChild("Handle")
+		if handle then
+			local billboard=Instance.new("BillboardGui")
+			billboard.Name="PumpkinItemTag"
+			billboard.Size=UDim2.new(0,150,0,40)
+			billboard.Adornee=handle
+			billboard.AlwaysOnTop=true
+			billboard.Parent=tool
+			local label=Instance.new("TextLabel")
+			label.Size=UDim2.new(1,0,1,0)
+			label.BackgroundTransparency=1
+			label.TextScaled=true
+			label.Font=Enum.Font.GothamBold
+			label.TextColor3=Color3.fromRGB(255,200,0)
+			label.TextStrokeTransparency=0.3
+			label.TextStrokeColor3=Color3.new(0,0,0)
+			label.Text=tool.Name
+			label.Parent=billboard
+			ApplyHighlight(handle)
+		end
+	end
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+	if obj:IsA("Tool") and obj.Parent==workspace.Items then
+		CollectionService:AddTag(obj,"PumpkinItem")
+	end
+	if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+		CollectionService:AddTag(obj,"PumpkinPlayer")
+	end
+end)
+
+for _,tool in ipairs(workspace.Items:GetChildren()) do
+	if tool:IsA("Tool") then
+		CollectionService:AddTag(tool,"PumpkinItem")
+	end
+end
+
+CollectionService:GetInstanceAddedSignal("PumpkinItem"):Connect(function(tool)
+	if ItemESPEnabled then
+		CreateToolTag(tool)
+	end
+end)
+
+CollectionService:GetInstanceAddedSignal("PumpkinPlayer"):Connect(function(char)
+	if PlayerESPEnabled then
+		local hrp=char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			ApplyHighlight(hrp)
+			CreateNameTag(char)
+		end
+	end
+end)
+
+local Rayfield=loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window=Rayfield:CreateWindow({
+	Name="Pumpkin Hub V0.2",
+	LoadingTitle="Pumpkin Hub",
+	LoadingSubtitle="Slap Royale",
+	ConfigurationSaving={Enabled=false}
+})
+
+Rayfield:Notify({
+	Title = "IMPORTANT!",
+	Content = "USING THIS SCRIPT CAN RESULT IN A PERMANENT BAN USE ON OWN RISK",
+	Duration = 7,
+})
+
+local CombatTab=Window:CreateTab("Combat","swords")
+local ItemsTab=Window:CreateTab("Items","package")
+local ESPTab=Window:CreateTab("ESP","eye")
+local OtherTab=Window:CreateTab("Other","settings")
+local SafetyTab = Window:CreateTab("Safety", "shield-check")
+local GoodPeopleTab = Window:CreateTab("Good People", "heart")
+
+GoodPeopleTab:CreateSection("Title")
+
+GoodPeopleTab:CreateParagraph({
+    Title = "SVCLUTCHER",
+    Content = "Thank you for being the first to make a video on Pumpkin Hub! Sub to SVCLUTCHER on YT"
+})
+
+CombatTab:CreateSlider({
+	Name="Hitbox Size (Others + NPCs)",
+	Range={1,20},
+	Increment=1,
+	CurrentValue=1,
+	Callback=function(v)
+		globalHRPSize=v
+		hrpGlobalSliderUsed=true
+	end
+})
+
+--==================================================
+-- SAVE BUTTON STATES AND RESTORE FEATURES
+-- Turning "Save Script Settings" ON takes one snapshot.
+-- On the next script launch, saved ON toggles also run
+-- their feature callbacks and enable those features.
+--==================================================
+
+local HttpService = game:GetService("HttpService")
+local SavedButtonStatesFile = "PumpkinHub_ButtonStates.json"
+local SavedButtonStates = {}
+local SavedToggleButtons = {}
+local RestoringSavedButtons = false
+
+local function CreateSavedToggle(tab, config)
+	local toggleName = config.Name
+	local originalCallback = config.Callback
+	SavedButtonStates[toggleName] = config.CurrentValue == true
+
+	config.Callback = function(value)
+		-- Do not change the saved snapshot during restoration,
+		-- but always run the callback so saved ON features enable.
+		if not RestoringSavedButtons then
+			SavedButtonStates[toggleName] = value == true
+		end
+
+		if originalCallback then
+			originalCallback(value)
+		end
+	end
+
+	local button = tab:CreateToggle(config)
+	SavedToggleButtons[toggleName] = button
+	return button
+end
+
+local function SaveButtonSnapshot()
+	local snapshot = {}
+
+	for name, value in pairs(SavedButtonStates) do
+		snapshot[name] = value == true
+	end
+
+	local ok, encoded = pcall(function()
+		return HttpService:JSONEncode(snapshot)
+	end)
+
+	if not ok then
+		Rayfield:Notify({
+			Title = "Save Script Settings",
+			Content = "Could not encode button settings.",
+			Duration = 4
+		})
+		return
+	end
+
+	local writeOK = pcall(function()
+		if type(writefile) ~= "function" then
+			error("writefile is not available")
+		end
+		writefile(SavedButtonStatesFile, encoded)
+	end)
+
+	Rayfield:Notify({
+		Title = "Save Script Settings",
+		Content = writeOK and "Saved the current button states." or
+			"Saving requires executor file-write support.",
+		Duration = 5
+	})
+end
+
+
+--==================================================
+-- SLAP AURA + CHANGEABLE KEYBIND
+--==================================================
+
+_G.SlapAura = false
+
+local SlapAuraButton = CreateSavedToggle(CombatTab, {
+    Name = "Slap Aura",
+    CurrentValue = false,
+
+    Callback = function(enabled)
+        _G.SlapAura = enabled
+
+        Rayfield:Notify({
+            Title = "Slap Aura",
+            Content = enabled
+                and "Slap Aura toggled ON"
+                or "Slap Aura toggled OFF",
+            Duration = 3
+        })
+    end
+})
+
+CombatTab:CreateKeybind({
+    Name = "Slap Aura Toggle",
+    CurrentKeybind = "E",
+    HoldToInteract = false,
+    Flag = "SlapAuraToggleKey",
+
+    Callback = function()
+        SlapAuraButton:Set(not _G.SlapAura)
+    end
+})
+
+local SlapAuraMode = "Slow"
+
+CombatTab:CreateDropdown({
+    Name = "Slap Aura Speed",
+    Options = {"Safe", "Fast (May get you kicked)"},
+    CurrentOption = {"Safe"},
+    MultipleOptions = false,
+
+    Callback = function(option)
+        local selectedMode = option
+
+        if type(option) == "table" then
+            selectedMode = option[1]
+        end
+
+        if selectedMode == "Safe" or selectedMode == "Fast (May get you kicked)" then
+            SlapAuraMode = selectedMode
+        end
+    end
+})
+
+
+
+
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local SlapAuraRangePart = nil
+
+local function RangeNotify(message)
+    warn("[Slap Aura Range] " .. message)
+
+    pcall(function()
+        Rayfield:Notify({
+            Title = "Slap Aura Range",
+            Content = message,
+            Duration = 5
+        })
+    end)
+end
+
+local function RemoveSlapAuraRange()
+    if SlapAuraRangePart then
+        SlapAuraRangePart:Destroy()
+        SlapAuraRangePart = nil
+    end
+
+    RangeNotify("Sphere removed.")
+end
+
+local function CreateSlapAuraRange()
+    RangeNotify("Getting local player...")
+
+    local character = LocalPlayer.Character
+    if not character then
+        RangeNotify("Character not ready. Waiting...")
+        character = LocalPlayer.CharacterAdded:Wait()
+    end
+
+    local hrp = character:WaitForChild("HumanoidRootPart", 10)
+    if not hrp then
+        RangeNotify("ERROR: HumanoidRootPart not found!")
+        return
+    end
+
+    RangeNotify("Creating sphere...")
+
+    local ball = Instance.new("Part")
+    ball.Name = "SlapAuraRange"
+    ball.Shape = Enum.PartType.Ball
+    ball.Size = Vector3.new(25, 25, 25)
+    ball.Color = Color3.fromRGB(0, 255, 0)
+    ball.Transparency = 0.7
+    ball.Material = Enum.Material.Neon
+    ball.Anchored = false
+    ball.CanCollide = false
+    ball.CanTouch = false
+    ball.CanQuery = false
+    ball.CastShadow = false
+    ball.Massless = true
+    ball.CFrame = hrp.CFrame
+    ball.Parent = workspace
+
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0 = hrp
+    weld.Part1 = ball
+    weld.Parent = ball
+
+    SlapAuraRangePart = ball
+
+    RangeNotify("SUCCESS: Sphere attached!")
+end
+
+CreateSavedToggle(CombatTab, {
+    Name = "Slap Aura Range",
+    CurrentValue = false,
+
+    Callback = function(enabled)
+        RangeNotify("Toggle: " .. tostring(enabled))
+
+        local success, err = pcall(function()
+            if enabled then
+                CreateSlapAuraRange()
+            else
+                RemoveSlapAuraRange()
+            end
+        end)
+
+        if not success then
+            RangeNotify("ERROR: " .. tostring(err))
+        end
+    end
+})
+
+
+
+
+
+--==================================================
+-- AUTO WIN
+--==================================================
+
+_G.AutoWin = _G.AutoWin or false
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local currentTarget = nil
+local autoWinMode = "One at a time"
+
+local AUTO_WIN_INTERVAL = 3
+local TARGETS_BEFORE_PAUSE = 5
+local PAUSE_DURATION = 10
+
+local hitCount = 0
+local pauseUntil = 0
+
+CreateSavedToggle(CombatTab, {
+    Name = "Auto Win",
+    CurrentValue = _G.AutoWin,
+    Callback = function(v)
+        _G.AutoWin = v
+
+        if not v then
+            currentTarget = nil
+            hitCount = 0
+            pauseUntil = 0
+        end
+    end
+})
+
+CombatTab:CreateDropdown({
+    Name = "Auto Win Mode",
+    Options = {"One at a time", "Slap All"},
+    CurrentOption = {"One at a time"},
+    MultipleOptions = false,
+    Callback = function(option)
+        if typeof(option) == "table" then
+            autoWinMode = option[1] or "One at a time"
+        else
+            autoWinMode = option or "One at a time"
+        end
+
+        currentTarget = nil
+        hitCount = 0
+        pauseUntil = 0
+    end
+})
+
+-- Returns the character's root only if the player is alive.
+local function GetRoot(plr)
+    if not plr then
+        return nil
+    end
+
+    local char = plr.Character
+    if not char then
+        return nil
+    end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+
+    if not hum or hum.Health <= 0 or not root then
+        return nil
+    end
+
+    return root
+end
+
+local function IsRagdolled(plr)
+    local char = plr and plr.Character
+    if not char then
+        return true
+    end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then
+        return true
+    end
+
+    local ragdollValue = char:FindFirstChild("Ragdolled", true)
+    if ragdollValue and ragdollValue:IsA("BoolValue") then
+        return ragdollValue.Value
+    end
+
+    return hum.PlatformStand
+end
+
+local function GetClosestPlayer(skipRagdolled)
+    local myChar = LocalPlayer.Character
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+    if not myHum or myHum.Health <= 0 or not myRoot then
+        return nil
+    end
+
+    local closestPlayer = nil
+    local closestDistance = math.huge
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local targetRoot = GetRoot(plr)
+
+            if targetRoot and not (skipRagdolled and IsRagdolled(plr)) then
+                local distance =
+                    (myRoot.Position - targetRoot.Position).Magnitude
+
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = plr
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+task.spawn(function()
+    while true do
+        task.wait(AUTO_WIN_INTERVAL)
+
+        if not _G.AutoWin then
+            continue
+        end
+
+        if os.clock() < pauseUntil then
+            continue
+        end
+
+        local ok, err = pcall(function()
+            local myChar = LocalPlayer.Character
+            local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+            if not myHum or myHum.Health <= 0 or not myRoot then
+                return
+            end
+
+            if autoWinMode == "One at a time" then
+                -- Keep the same living target, even while ragdolled.
+                if not currentTarget or not GetRoot(currentTarget) then
+                    currentTarget = GetClosestPlayer(false)
+                end
+
+                local targetRoot = GetRoot(currentTarget)
+
+                if targetRoot then
+                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
+                end
+            else
+                -- Slap All: skip ragdolled players.
+                currentTarget = GetClosestPlayer(true)
+
+                local targetRoot = GetRoot(currentTarget)
+
+                if targetRoot and not IsRagdolled(currentTarget) then
+                    myRoot.CFrame = targetRoot.CFrame * CFrame.new(3, 0, 0)
+
+                    hitCount += 1
+
+                    if hitCount >= TARGETS_BEFORE_PAUSE then
+                        hitCount = 0
+                        pauseUntil = os.clock() + PAUSE_DURATION
+                        currentTarget = nil
+                    end
+                end
+            end
+        end)
+
+        if not ok then
+            warn("[Auto Win] Error:", err)
+        end
+    end
+end)
+
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+
+local TargetPlayer = nil
+local TeleportToTargetEnabled = false
+local TeleportLoopRunning = false
+
+-- Ragdoll tracking
+local RagdollWaitCount = 0
+local MaxRagdollWaits = 5
+local RagdollCooldown = 15
+
+-- Target death/respawn connection
+local TargetCharacterConnection = nil
+local TargetDeathConnection = nil
+
+--------------------------------------------------
+-- TARGET LIST
+--------------------------------------------------
+
+local function GetPlayerNames()
+	local names = {}
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			table.insert(names, player.Name)
+		end
+	end
+
+	table.sort(names)
+
+	return names
+end
+
+--------------------------------------------------
+-- FIND PLAYER
+--------------------------------------------------
+
+local function FindPlayer(name)
+	if not name then
+		return nil
+	end
+
+	return Players:FindFirstChild(name)
+end
+
+--------------------------------------------------
+-- DISCONNECT TARGET CONNECTIONS
+--------------------------------------------------
+
+local function DisconnectTargetConnections()
+
+	if TargetCharacterConnection then
+		TargetCharacterConnection:Disconnect()
+		TargetCharacterConnection = nil
+	end
+
+	if TargetDeathConnection then
+		TargetDeathConnection:Disconnect()
+		TargetDeathConnection = nil
+	end
+end
+
+--------------------------------------------------
+-- TARGET DEATH
+--------------------------------------------------
+
+local function SetupTargetDeathDetection()
+
+	DisconnectTargetConnections()
+
+	if not TargetPlayer then
+		return
+	end
+
+	--------------------------------------------------
+	-- SETUP HUMANOID DEATH DETECTION
+	--------------------------------------------------
+
+	local function SetupCharacter(character)
+
+		if not character then
+			return
+		end
+
+		if TargetDeathConnection then
+			TargetDeathConnection:Disconnect()
+			TargetDeathConnection = nil
+		end
+
+		local humanoid =
+			character:WaitForChild(
+				"Humanoid",
+				5
+			)
+
+		if not humanoid then
+			return
+		end
+
+		TargetDeathConnection =
+			humanoid.Died:Connect(function()
+
+				-- Disable teleport
+				TeleportToTargetEnabled = false
+
+				-- Reset counter
+				RagdollWaitCount = 0
+
+				Rayfield:Notify({
+					Title = "Teleport To Target",
+					Content = TargetPlayer.Name
+						.. " died. Teleport disabled.",
+					Duration = 3
+				})
+			end)
+	end
+
+	--------------------------------------------------
+	-- CURRENT CHARACTER
+	--------------------------------------------------
+
+	if TargetPlayer.Character then
+		task.spawn(function()
+			SetupCharacter(TargetPlayer.Character)
+		end)
+	end
+
+	--------------------------------------------------
+	-- FUTURE RESPAWN
+	--------------------------------------------------
+
+	TargetCharacterConnection =
+		TargetPlayer.CharacterAdded:Connect(function(character)
+
+			-- Wait for new humanoid
+			task.spawn(function()
+				SetupCharacter(character)
+			end)
+
+		end)
+end
+
+--------------------------------------------------
+-- TARGET DROPDOWN
+--------------------------------------------------
+
+local TargetDropdown = CombatTab:CreateDropdown({
+	Name = "Target",
+	Options = GetPlayerNames(),
+	CurrentOption = {},
+	MultipleOptions = false,
+
+	Callback = function(option)
+
+		local selectedName
+
+		if type(option) == "table" then
+			selectedName = option[1]
+		else
+			selectedName = option
+		end
+
+		--------------------------------------------------
+		-- REMOVE OLD TARGET CONNECTIONS
+		--------------------------------------------------
+
+		DisconnectTargetConnections()
+
+		--------------------------------------------------
+		-- SET NEW TARGET
+		--------------------------------------------------
+
+		TargetPlayer =
+			FindPlayer(selectedName)
+
+		-- Reset ragdoll counter
+		RagdollWaitCount = 0
+
+		if TargetPlayer then
+
+			SetupTargetDeathDetection()
+
+			Rayfield:Notify({
+				Title = "Target",
+				Content = "Selected: "
+					.. TargetPlayer.Name,
+				Duration = 3
+			})
+
+		else
+
+			TargetPlayer = nil
+
+		end
+	end
+})
+
+--------------------------------------------------
+-- REFRESH TARGET LIST
+--------------------------------------------------
+
+local function RefreshTargetList()
+
+	TargetDropdown:Refresh(
+		GetPlayerNames(),
+		true
+	)
+
+	if TargetPlayer
+		and not TargetPlayer.Parent then
+
+		DisconnectTargetConnections()
+
+		TargetPlayer = nil
+		TeleportToTargetEnabled = false
+		RagdollWaitCount = 0
+	end
+end
+
+Players.PlayerAdded:Connect(function()
+
+	task.wait(0.1)
+
+	RefreshTargetList()
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+
+	if TargetPlayer == player then
+
+		DisconnectTargetConnections()
+
+		TargetPlayer = nil
+		TeleportToTargetEnabled = false
+		RagdollWaitCount = 0
+	end
+
+	task.wait(0.1)
+
+	RefreshTargetList()
+end)
+
+--------------------------------------------------
+-- LOCAL ROOT
+--------------------------------------------------
+
+local function GetLocalRoot()
+
+	local character =
+		LocalPlayer.Character
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild(
+		"HumanoidRootPart"
+	)
+end
+
+--------------------------------------------------
+-- TARGET ROOT
+--------------------------------------------------
+
+local function GetTargetRoot()
+
+	if not TargetPlayer then
+		return nil
+	end
+
+	local character =
+		TargetPlayer.Character
+
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild(
+		"HumanoidRootPart"
+	)
+end
+
+--------------------------------------------------
+-- RAGDOLL CHECK
+--------------------------------------------------
+
+local function IsTargetRagdolled()
+
+	if not TargetPlayer then
+		return false
+	end
+
+	local character =
+		TargetPlayer.Character
+
+	if not character then
+		return false
+	end
+
+	--------------------------------------------------
+	-- ATTRIBUTE CHECK
+	--------------------------------------------------
+
+	local ragdolledAttribute =
+		character:GetAttribute("Ragdolled")
+
+	if ragdolledAttribute == true then
+		return true
+	end
+
+	--------------------------------------------------
+	-- BOOLVALUE CHECK
+	--------------------------------------------------
+
+	local ragdolledValue =
+		character:FindFirstChild(
+			"Ragdolled",
+			true
+		)
+
+	if ragdolledValue
+		and ragdolledValue:IsA("BoolValue") then
+
+		if ragdolledValue.Value then
+			return true
+		end
+	end
+
+	--------------------------------------------------
+	-- HUMANOID STATE CHECK
+	--------------------------------------------------
+
+	local humanoid =
+		character:FindFirstChildOfClass(
+			"Humanoid"
+		)
+
+	if humanoid then
+
+		local state =
+			humanoid:GetState()
+
+		if state == Enum.HumanoidStateType.Ragdoll
+			or state == Enum.HumanoidStateType.Physics then
+
+			return true
+		end
+	end
+
+	return false
+end
+
+--------------------------------------------------
+-- CHECK TARGET DEAD
+--------------------------------------------------
+
+local function IsTargetDead()
+
+	if not TargetPlayer then
+		return true
+	end
+
+	local character =
+		TargetPlayer.Character
+
+	if not character then
+		return false
+	end
+
+	local humanoid =
+		character:FindFirstChildOfClass(
+			"Humanoid"
+		)
+
+	if not humanoid then
+		return false
+	end
+
+	return humanoid.Health <= 0
+end
+
+--------------------------------------------------
+-- WAIT UNTIL UNRAGDOLLED
+--------------------------------------------------
+
+local function WaitUntilUnragdolled()
+
+	while TeleportToTargetEnabled do
+
+		--------------------------------------------------
+		-- TARGET EXISTS?
+		--------------------------------------------------
+
+		if not TargetPlayer
+			or not TargetPlayer.Parent then
+
+			return false
+		end
+
+		--------------------------------------------------
+		-- TARGET DEAD?
+		--------------------------------------------------
+
+		if IsTargetDead() then
+
+			TeleportToTargetEnabled = false
+			RagdollWaitCount = 0
+
+			return false
+		end
+
+		--------------------------------------------------
+		-- TARGET ROOT
+		--------------------------------------------------
+
+		local targetRoot =
+			GetTargetRoot()
+
+		if not targetRoot then
+
+			task.wait(0.1)
+
+			continue
+		end
+
+		--------------------------------------------------
+		-- TARGET NOT RAGDOLLED
+		--------------------------------------------------
+
+		if not IsTargetRagdolled() then
+			return true
+		end
+
+		--------------------------------------------------
+		-- COUNT ONE RAGDOLL WAIT
+		--------------------------------------------------
+
+		RagdollWaitCount += 1
+
+		--------------------------------------------------
+		-- 5 RAGDOLL WAITS
+		--------------------------------------------------
+
+		if RagdollWaitCount >= MaxRagdollWaits then
+
+			Rayfield:Notify({
+				Title = "Kill Player",
+				Content = "Ragdoll limit reached. Waiting 15 seconds.",
+				Duration = 3
+			})
+
+			--------------------------------------------------
+			-- WAIT 10 SECONDS
+			--------------------------------------------------
+
+			task.wait(RagdollCooldown)
+
+			--------------------------------------------------
+			-- RESET COUNTER
+			--------------------------------------------------
+
+			RagdollWaitCount = 0
+
+			if not TeleportToTargetEnabled then
+				return false
+			end
+
+		else
+
+			--------------------------------------------------
+			-- KEEP CHECKING EVERY 0.1 SECONDS
+			-- WITHOUT COUNTING AGAIN
+			--------------------------------------------------
+
+			repeat
+
+				task.wait(0.1)
+
+				if not TeleportToTargetEnabled then
+					return false
+				end
+
+				if not TargetPlayer
+					or not TargetPlayer.Parent then
+
+					return false
+				end
+
+				if IsTargetDead() then
+
+					TeleportToTargetEnabled = false
+					RagdollWaitCount = 0
+
+					return false
+				end
+
+			until not IsTargetRagdolled()
+		end
+	end
+
+	return false
+end
+
+--------------------------------------------------
+-- TELEPORT LOOP
+--------------------------------------------------
+
+local function StartTeleportLoop()
+
+	if TeleportLoopRunning then
+		return
+	end
+
+	TeleportLoopRunning = true
+
+	task.spawn(function()
+
+		while TeleportToTargetEnabled do
+
+			--------------------------------------------------
+			-- TARGET STILL EXISTS?
+			--------------------------------------------------
+
+			if not TargetPlayer
+				or not TargetPlayer.Parent then
+
+				TeleportToTargetEnabled = false
+				break
+			end
+
+			--------------------------------------------------
+			-- TARGET DEAD?
+			--------------------------------------------------
+
+			if IsTargetDead() then
+
+				TeleportToTargetEnabled = false
+				RagdollWaitCount = 0
+
+				break
+			end
+
+			--------------------------------------------------
+			-- WAIT FOR UNRAGDOLL
+			--------------------------------------------------
+
+			local ready =
+				WaitUntilUnragdolled()
+
+			if not ready then
+				break
+			end
+
+			if not TeleportToTargetEnabled then
+				break
+			end
+
+			--------------------------------------------------
+			-- GET ROOTS
+			--------------------------------------------------
+
+			local localRoot =
+				GetLocalRoot()
+
+			local targetRoot =
+				GetTargetRoot()
+
+			if not localRoot
+				or not targetRoot then
+
+				task.wait(0.1)
+
+				continue
+			end
+
+			--------------------------------------------------
+			-- FINAL DEAD CHECK
+			--------------------------------------------------
+
+			if IsTargetDead() then
+
+				TeleportToTargetEnabled = false
+				RagdollWaitCount = 0
+
+				break
+			end
+
+			--------------------------------------------------
+			-- FINAL RAGDOLL CHECK
+			--------------------------------------------------
+
+			if IsTargetRagdolled() then
+
+				task.wait(0.1)
+
+				continue
+			end
+
+			--------------------------------------------------
+			-- SAVE ORIGINAL POSITION
+			--------------------------------------------------
+
+			local originalCFrame =
+				localRoot.CFrame
+
+			--------------------------------------------------
+			-- TELEPORT TO TARGET
+			--------------------------------------------------
+
+			localRoot.CFrame =
+				targetRoot.CFrame
+
+			--------------------------------------------------
+			-- WAIT 0.5 SECONDS
+			--------------------------------------------------
+
+			task.wait(0.5)
+
+			--------------------------------------------------
+			-- TELEPORT BACK
+			--------------------------------------------------
+
+			if TeleportToTargetEnabled then
+
+				local currentRoot =
+					GetLocalRoot()
+
+				if currentRoot then
+
+					currentRoot.CFrame =
+						originalCFrame
+				end
+			end
+
+			--------------------------------------------------
+			-- WAIT 0.5 SECONDS
+			--------------------------------------------------
+
+			task.wait(0.5)
+		end
+
+		TeleportLoopRunning = false
+	end)
+end
+
+--------------------------------------------------
+-- TOGGLE
+--------------------------------------------------
+
+CreateSavedToggle(CombatTab, {
+	Name = "Kill Player (Can cause kicks)",
+	CurrentValue = false,
+
+	Callback = function(Value)
+
+		TeleportToTargetEnabled = Value
+
+		--------------------------------------------------
+		-- DISABLED
+		--------------------------------------------------
+
+		if not Value then
+
+			RagdollWaitCount = 0
+
+			return
+		end
+
+		--------------------------------------------------
+		-- TARGET REQUIRED
+		--------------------------------------------------
+
+		if not TargetPlayer
+			or not TargetPlayer.Parent then
+
+			TeleportToTargetEnabled = false
+			RagdollWaitCount = 0
+
+			Rayfield:Notify({
+				Title = "Kill Player",
+				Content = "Select a target first.",
+				Duration = 3
+			})
+
+			return
+		end
+
+		--------------------------------------------------
+		-- TARGET ALREADY DEAD
+		--------------------------------------------------
+
+		if IsTargetDead() then
+
+			TeleportToTargetEnabled = false
+			RagdollWaitCount = 0
+
+			Rayfield:Notify({
+				Title = "Teleport To Target",
+				Content = "Target is dead.",
+				Duration = 3
+			})
+
+			return
+		end
+
+		--------------------------------------------------
+		-- RESET COUNTER
+		--------------------------------------------------
+
+		RagdollWaitCount = 0
+
+		--------------------------------------------------
+		-- START LOOP
+		--------------------------------------------------
+
+		StartTeleportLoop()
+	end
+})
+
+CreateSavedToggle(ItemsTab, {
+	Name="Use Items",
+	CurrentValue=false,
+	Callback=function(v)
+		AutoUseEnabled=v
+	end
+})
+
+-- Choose the collection speed separately from enabling collection.
+ItemsTab:CreateDropdown({
+	Name = "Get Items Speed",
+	Options = {"Slow", "Fast"},
+	CurrentOption = {"Slow"},
+	MultipleOptions = false,
+	Callback = function(option)
+		local selectedMode = option
+		if type(option) == "table" then
+			selectedMode = option[1]
+		end
+		if selectedMode == "Slow" or selectedMode == "Fast" then
+			GetItemsMode = selectedMode
+		end
+	end
+})
+
+CreateSavedToggle(ItemsTab, {
+	Name = "Get Items",
+	CurrentValue = false,
+	Callback = function(v)
+		GetItemsEnabled = v
+		if v then
+			GetAllItemsEnabled = false
+			SetGetAllItemsNoclip(false)
+		else
+			CollectionRunning = false
+			CollectionCooldown = false
+		end
+	end
+})
+
+CreateSavedToggle(ItemsTab, {
+	Name="Auto Pickup",
+	CurrentValue=false,
+	Callback=function(v)
+		AutoPickupEnabled=v
+	end
+})
+
+local AutoBombBusEnabled=false
+
+CreateSavedToggle(ItemsTab, {
+	Name="Auto Bomb Bus",
+	CurrentValue=false,
+	Callback=function(v)
+		AutoBombBusEnabled=v
+	end
+})
+
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+local AutoGotoCrate = false
+local Running = false
+
+
+local function GetRoot()
+	local character = LocalPlayer.Character
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function IsCrate(crate)
+	return crate
+		and crate.Parent
+		and crate:IsA("Model")
+		and crate.Name == "Crate"
+end
+
+local function GetCratePosition(crate)
+	if not IsCrate(crate) then
+		return nil
+	end
+
+	if crate.PrimaryPart then
+		return crate.PrimaryPart.Position
+	end
+
+	local success, pivot = pcall(function()
+		return crate:GetPivot()
+	end)
+
+	if success then
+		return pivot.Position
+	end
+
+	return nil
+end
+
+local function GetClosestCrate(cratesFolder)
+	local root = GetRoot()
+
+	if not root then
+		return nil
+	end
+
+	local closest = nil
+	local closestDistance = math.huge
+
+	for _, crate in ipairs(cratesFolder:GetChildren()) do
+		if IsCrate(crate) then
+			local position = GetCratePosition(crate)
+
+			if position then
+				local distance =
+					(root.Position - position).Magnitude
+
+				if distance < closestDistance then
+					closestDistance = distance
+					closest = crate
+				end
+			end
+		end
+	end
+
+	return closest
+end
+
+local function IsCrateBroken(crate)
+	if not IsCrate(crate) then
+		return true
+	end
+
+	-- Some crate implementations expose health as an attribute or value.
+	local healthAttribute = crate:GetAttribute("Health")
+	if typeof(healthAttribute) == "number" and healthAttribute <= 0 then
+		return true
+	end
+
+	local healthValue = crate:FindFirstChild("Health", true)
+	if healthValue and (healthValue:IsA("NumberValue") or healthValue:IsA("IntValue")) then
+		if healthValue.Value <= 0 then
+			return true
+		end
+	end
+
+	-- If the crate's parts have been removed, treat it as broken.
+	for _, descendant in ipairs(crate:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function StartAutoGoto(cratesFolder)
+	-- Poll every 0.1 seconds. Teleport only once per target, then wait
+	-- until that crate is broken/removed before selecting another one.
+	if Running then
+		return
+	end
+
+	Running = true
+
+	task.spawn(function()
+		local targetCrate = nil
+
+		while AutoGotoCrate and cratesFolder and cratesFolder.Parent do
+			if not targetCrate or IsCrateBroken(targetCrate) then
+				targetCrate = GetClosestCrate(cratesFolder)
+
+				if targetCrate then
+					local root = GetRoot()
+					local position = GetCratePosition(targetCrate)
+
+					if root and position then
+						root.CFrame = CFrame.new(position + Vector3.new(0, 10, 0))
+					end
+				end
+			end
+
+			task.wait(0.1)
+		end
+
+		Running = false
+	end)
+end
+
+-- Use All Cube of Ice / Sphere of Fury
+-- Only one item-use task runs at a time.
+-- The next queued item starts after all tools of the current type are gone.
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local ItemUseQueue = {}
+local ItemQueueRunning = false
+
+local function FindTools(itemName)
+    local tools = {}
+    local character = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+
+    local function scan(container)
+        if not container then
+            return
+        end
+
+        for _, obj in ipairs(container:GetChildren()) do
+            if obj:IsA("Tool") and obj.Name == itemName then
+                table.insert(tools, obj)
+            end
+        end
+    end
+
+    scan(character)
+    scan(backpack)
+
+    return tools
+end
+
+local function ProcessItemQueue()
+    if ItemQueueRunning then
+        return
+    end
+
+    ItemQueueRunning = true
+
+    task.spawn(function()
+        while #ItemUseQueue > 0 do
+            local itemName = table.remove(ItemUseQueue, 1)
+
+            -- Keep using this item until no tools of this type remain.
+            while true do
+                local tools = FindTools(itemName)
+
+                if #tools == 0 then
+                    break
+                end
+
+                local character = LocalPlayer.Character
+                local humanoid = character
+                    and character:FindFirstChildOfClass("Humanoid")
+
+                if not humanoid then
+                    task.wait(0.37)
+                    continue
+                end
+
+                local tool = tools[1]
+
+                if tool.Parent ~= character then
+                    pcall(function()
+                        humanoid:EquipTool(tool)
+                    end)
+                    task.wait(0.1)
+                end
+
+                if tool.Parent == character then
+                    pcall(function()
+                        tool:Activate()
+                    end)
+                end
+
+                task.wait(0.37)
+            end
+        end
+
+        ItemQueueRunning = false
+
+        -- Catch any request queued just as processing ended.
+        if #ItemUseQueue > 0 then
+            ProcessItemQueue()
+        end
+    end)
+end
+
+local function QueueItemUse(itemName)
+    -- Don't queue duplicate requests for the same item type.
+    for _, queuedName in ipairs(ItemUseQueue) do
+        if queuedName == itemName then
+            return
+        end
+    end
+
+    table.insert(ItemUseQueue, itemName)
+    ProcessItemQueue()
+end
+
+ItemsTab:CreateButton({
+    Name = "Use all Cube of Ice",
+    Callback = function()
+        QueueItemUse("Cube of Ice")
+    end
+})
+
+ItemsTab:CreateButton({
+    Name = "Use all Sphere of fury",
+    Callback = function()
+        QueueItemUse("Sphere of fury")
+    end
+})
+
+
+
+
+
+
+
+
+
+CreateSavedToggle(ItemsTab, {
+	Name = "Auto goto crate",
+	CurrentValue = false,
+
+	Callback = function(Value)
+
+		AutoGotoCrate = Value
+
+		if not Value then
+			return
+		end
+
+		local shipments =
+			workspace:FindFirstChild("Shipments")
+
+		local cratesFolder =
+			shipments
+			and shipments:FindFirstChild("Crates")
+
+		if not cratesFolder then
+			AutoGotoCrate = false
+
+			Rayfield:Notify({
+				Title = "Auto goto crate",
+				Content = "Workspace.Shipments.Crates not found.",
+				Duration = 5
+			})
+
+			return
+		end
+
+		StartAutoGoto(cratesFolder)
+	end
+})
+
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerESPEnabled = false
+local HealthConnections = {}
+
+--==================================================
+-- CREATE NAME TAG
+--==================================================
+
+local function CreateNameTag(char)
+    local head = char:FindFirstChild("Head")
+    if not head then
+        return
+    end
+
+    local oldTag = head:FindFirstChild("PlayerESP")
+    if oldTag then
+        oldTag:Destroy()
+    end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "PlayerESP"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 200, 0, 35)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "Name"
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.Text = char.Name
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.TextScaled = true
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Parent = billboard
+
+    -- Update the actual ESP name text color
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        local function UpdateNameColor()
+            if not PlayerESPEnabled or not nameLabel.Parent then
+                return
+            end
+
+            if humanoid.Health <= 0 then
+                nameLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            else
+                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end
+        end
+
+        UpdateNameColor()
+
+        -- Disconnect any previous health listener for this character
+        if HealthConnections[char] then
+            HealthConnections[char]:Disconnect()
+            HealthConnections[char] = nil
+        end
+
+        HealthConnections[char] =
+            humanoid.HealthChanged:Connect(UpdateNameColor)
+
+        humanoid.Died:Connect(function()
+            if nameLabel.Parent then
+                nameLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            end
+        end)
+    end
+end
+
+--==================================================
+-- REMOVE NAME TAG
+--==================================================
+
+local function RemoveNameTag(char)
+    local head = char:FindFirstChild("Head")
+
+    if head then
+        local billboard = head:FindFirstChild("PlayerESP")
+
+        if billboard then
+            billboard:Destroy()
+        end
+    end
+
+    if HealthConnections[char] then
+        HealthConnections[char]:Disconnect()
+        HealthConnections[char] = nil
+    end
+end
+
+--==================================================
+-- PLAYER ESP TOGGLE
+--==================================================
+
+CreateSavedToggle(ESPTab, {
+    Name = "Player ESP",
+    CurrentValue = false,
+
+    Callback = function(v)
+        PlayerESPEnabled = v
+
+        for _, char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
+            local player = Players:GetPlayerFromCharacter(char)
+
+            -- Never apply ESP to the local player
+            if player and player ~= LocalPlayer then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+
+                if v then
+                    if hrp then
+                        ApplyHighlight(hrp)
+                    end
+
+                    CreateNameTag(char)
+                else
+                    RemoveNameTag(char)
+                end
+            end
+        end
+    end
+})
+
+CreateSavedToggle(ESPTab, {
+	Name="Tool ESP",
+	CurrentValue=false,
+	Callback=function(v)
+		ItemESPEnabled=v
+		if v then
+			for _,tool in ipairs(CollectionService:GetTagged("PumpkinItem")) do
+				CreateToolTag(tool)
+			end
+		end
+	end
+})
+
+local GloveESPEnabled = false
+
+local function GetGloveValue(player)
+	local glove = player:FindFirstChild("Glove")
+
+	if not glove then
+		return nil
+	end
+
+	-- Supports StringValue and similar Value objects
+	local success, value = pcall(function()
+		return glove.Value
+	end)
+
+	if success and value ~= nil then
+		return tostring(value)
+	end
+
+	return nil
+end
+
+local function UpdateGloveTag(char)
+	if not GloveESPEnabled then
+		return
+	end
+
+	local head = char:FindFirstChild("Head")
+	if not head then
+		return
+	end
+
+	local player = Players:GetPlayerFromCharacter(char)
+	if not player then
+		return
+	end
+
+	local playerESP = head:FindFirstChild("PlayerESP")
+
+	if not playerESP then
+		return
+	end
+
+	local gloveLabel = playerESP:FindFirstChild("Glove")
+
+	if not gloveLabel then
+		gloveLabel = Instance.new("TextLabel")
+		gloveLabel.Name = "Glove"
+		gloveLabel.BackgroundTransparency = 1
+		gloveLabel.Size = UDim2.new(1, 0, 0, 20)
+		gloveLabel.Position = UDim2.new(0, 0, 0, 25)
+		gloveLabel.TextColor3 = Color3.fromRGB(255, 220, 80)
+		gloveLabel.TextStrokeTransparency = 0
+		gloveLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		gloveLabel.TextScaled = true
+		gloveLabel.Font = Enum.Font.GothamBold
+		gloveLabel.Parent = playerESP
+	end
+
+	local gloveValue = GetGloveValue(player)
+
+	if gloveValue then
+		gloveLabel.Text = gloveValue
+		gloveLabel.Visible = true
+	else
+		gloveLabel.Text = "Unknown"
+		gloveLabel.Visible = true
+	end
+end
+
+local function RemoveGloveTag(char)
+	local head = char:FindFirstChild("Head")
+
+	if not head then
+		return
+	end
+
+	local playerESP = head:FindFirstChild("PlayerESP")
+
+	if not playerESP then
+		return
+	end
+
+	local gloveLabel = playerESP:FindFirstChild("Glove")
+
+	if gloveLabel then
+		gloveLabel:Destroy()
+	end
+
+	-- Restore normal Player ESP size
+	playerESP.Size = UDim2.new(0, 200, 0, 35)
+end
+
+CreateSavedToggle(ESPTab, {
+	Name = "Glove ESP (Need Player ESP on to work)",
+	CurrentValue = false,
+	Callback = function(v)
+
+		GloveESPEnabled = v
+
+		for _, char in ipairs(CollectionService:GetTagged("PumpkinPlayer")) do
+
+			if v then
+				UpdateGloveTag(char)
+			else
+				RemoveGloveTag(char)
+			end
+		end
+	end
+})
+
+CreateSavedToggle(OtherTab, {
+	Name="Early Bus Jump",
+	CurrentValue=false,
+	Callback=function(v)
+		EBJEnabled=v
+	end
+})
+
+local InstantLandingToggle = CreateSavedToggle(OtherTab, {
+    Name = "Instant Landing",
+    CurrentValue = false,
+    Callback = function(v)
+        ILEnabled = v
+    end
+})
+
+CreateSavedToggle(OtherTab, {
+	Name="Remove Zone Effect",
+	CurrentValue=false,
+	Callback=function(v)
+		RemoveZoneEnabled=v
+	end
+})
+
+CreateSavedToggle(OtherTab, {
+	Name="Delete All Seats",
+	CurrentValue=false,
+	Callback=function(v)
+		DeleteSeatsEnabled=v
+	end
+})
+
+local SpeedBoostEnabled=false
+
+CreateSavedToggle(OtherTab, {
+	Name="Speed Boost",
+	CurrentValue=false,
+	Callback=function(v)
+		SpeedBoostEnabled=v
+	end
+})
+
+local InfJumpEnabled = false
+
+CreateSavedToggle(OtherTab, {
+	Name = "Infinite Jump",
+	CurrentValue = false,
+	Callback = function(v)
+		InfJumpEnabled = v
+	end
+})
+
+UIS.JumpRequest:Connect(function()
+	if InfJumpEnabled then
+		local hum = Char and Char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end)
+
+
+
+OtherTab:CreateSlider({
+    Name = "Max Zoom Out Distance (Use after landing)",
+    Range = {1, 2000},
+    Increment = 100,
+    Suffix = " studs",
+    CurrentValue = 128,
+    Flag = "MaxZoomOutDistance",
+    Callback = function(Value)
+        game.Players.LocalPlayer.CameraMaxZoomDistance = Value
+    end,
+})
+
+
+OtherTab:CreateButton({
+	Name = "Open Lab + Teleport",
+	Callback = function()
+
+		local Players = game:GetService("Players")
+		local LocalPlayer = Players.LocalPlayer
+
+		local codes = {
+			["9648755440"] = "8",
+			["9648765536"] = "2",
+			["9648723237"] = "3",
+			["9648718450"] = "6",
+			["9648769161"] = "4",
+			["9648730082"] = "6",
+			["9648734698"] = "2",
+			["9648712563"] = "2",
+			["9648742013"] = "7",
+			["9648745618"] = "3",
+			["9648715920"] = "6",
+			["9648752438"] = "2",
+			["9648749145"] = "8",
+			["9648759883"] = "9",
+			["9648738553"] = "8"
+		}
+
+		-- Get Map
+		local map = workspace:FindFirstChild("Map")
+
+		if not map then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "Map not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Get code GUI
+		local codeBrick = map:FindFirstChild("CodeBrick")
+		local surfaceGui = codeBrick and codeBrick:FindFirstChild("SurfaceGui")
+
+		if not surfaceGui then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "CodeBrick/SurfaceGui not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Find IMGTemplate objects
+		local templates = {}
+
+		for _, obj in ipairs(surfaceGui:GetChildren()) do
+			if obj.Name == "IMGTemplate" then
+				table.insert(templates, obj)
+			end
+		end
+
+		if #templates ~= 4 then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "Found " .. #templates .. " images instead of 4.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Sort images left to right
+		table.sort(templates, function(a, b)
+			local ax = a.AbsolutePosition.X
+			local bx = b.AbsolutePosition.X
+
+			if math.abs(ax - bx) > 1 then
+				return ax < bx
+			end
+
+			return a.AbsolutePosition.Y < b.AbsolutePosition.Y
+		end)
+
+		local result = {}
+
+		-- Convert images to digits
+		for i, imageObject in ipairs(templates) do
+
+			local image = tostring(imageObject.Image)
+
+			local assetId =
+				image:match("[?&]id=(%d+)")
+				or image:match("rbxassetid://(%d+)")
+				or image:match("(%d+)$")
+
+			local digit = assetId and codes[assetId]
+
+			if not digit then
+				Rayfield:Notify({
+					Title = "Open Lab + Teleport",
+					Content = "Unknown image at position "
+						.. i .. ": " .. image,
+					Duration = 5
+				})
+				return
+			end
+
+			result[i] = digit
+		end
+
+		local CodeEsp = table.concat(result)
+
+		-- Get CodeDoor
+		local originOffice = map:FindFirstChild("OriginOffice")
+
+		if not originOffice then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "OriginOffice not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		local codeDoor = originOffice:FindFirstChild("CodeDoor")
+		local door = codeDoor and codeDoor:FindFirstChild("Door")
+
+		if not door then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "Door not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Get Door BasePart
+		local doorPart
+
+		if door:IsA("BasePart") then
+			doorPart = door
+		else
+			doorPart = door:FindFirstChildWhichIsA("BasePart", true)
+		end
+
+		if not doorPart then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "No BasePart found inside Door.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Get character
+		local character = LocalPlayer.Character
+			or LocalPlayer.CharacterAdded:Wait()
+
+		local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+		if not rootPart then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "HumanoidRootPart not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- ==========================================
+		-- TELEPORT 20 STUDS TO THE LEFT OF THE DOOR
+		-- ==========================================
+
+		local leftOffset =
+			-doorPart.CFrame.RightVector * 20
+
+		local targetPosition =
+			doorPart.Position + leftOffset
+
+		-- Preserve player's current rotation
+		local currentRotation =
+			rootPart.CFrame - rootPart.CFrame.Position
+
+		-- Teleport BEFORE entering the code
+		rootPart.CFrame =
+			CFrame.new(targetPosition) * currentRotation
+
+		-- ==========================================
+		-- GET KEYPAD
+		-- ==========================================
+
+		local keypad = door:FindFirstChild("Keypad")
+		local buttonsFolder = keypad and keypad:FindFirstChild("Buttons")
+
+		if not buttonsFolder then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "Keypad Buttons not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- ==========================================
+		-- RESET KEYPAD BEFORE ENTERING CODE
+		-- ==========================================
+
+		local resetButton = buttonsFolder:FindFirstChild("Reset")
+
+		if not resetButton then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "Reset button not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		local resetDetector =
+			resetButton:FindFirstChildOfClass("ClickDetector")
+
+		if not resetDetector then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "ClickDetector missing from Reset.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Clear anything already entered
+		fireclickdetector(resetDetector)
+
+		-- Small delay to let the keypad process Reset
+		task.wait(0.2)
+
+		-- ==========================================
+		-- ENTER CODE
+		-- ==========================================
+
+		for i = 1, #CodeEsp do
+
+			local digit = CodeEsp:sub(i, i)
+			local button = buttonsFolder:FindFirstChild(digit)
+
+			if not button then
+				Rayfield:Notify({
+					Title = "Open Lab + Teleport",
+					Content = "Button " .. digit .. " not found.",
+					Duration = 5
+				})
+				return
+			end
+
+			local clickDetector =
+				button:FindFirstChildOfClass("ClickDetector")
+
+			if not clickDetector then
+				Rayfield:Notify({
+					Title = "Open Lab + Teleport",
+					Content = "ClickDetector missing from button "
+						.. digit .. ".",
+					Duration = 5
+				})
+				return
+			end
+
+			fireclickdetector(clickDetector)
+
+			task.wait(0.15)
+		end
+
+		-- ==========================================
+		-- PRESS ENTER
+		-- ==========================================
+
+		local enterButton =
+			buttonsFolder:FindFirstChild("Enter")
+
+		if not enterButton then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "Enter button not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		local enterDetector =
+			enterButton:FindFirstChildOfClass("ClickDetector")
+
+		if not enterDetector then
+			Rayfield:Notify({
+				Title = "Open Lab + Teleport",
+				Content = "ClickDetector missing from Enter.",
+				Duration = 5
+			})
+			return
+		end
+
+		fireclickdetector(enterDetector)
+
+		Rayfield:Notify({
+			Title = "Code Entered [ " .. CodeEsp .. " ]",
+			Content = "Reset keypad, teleported left of door, and entered code.",
+			Duration = 5
+		})
+	end
+})
+
+OtherTab:CreateButton({
+    Name = "Open Bunker",
+    Callback = function()
+
+        local Players = game:GetService("Players")
+
+        local codes = {
+            ["9648755440"] = "8",
+            ["9648765536"] = "2",
+            ["9648723237"] = "3",
+            ["9648718450"] = "6",
+            ["9648769161"] = "4",
+            ["9648730082"] = "6",
+            ["9648734698"] = "2",
+            ["9648712563"] = "2",
+            ["9648742013"] = "7",
+            ["9648745618"] = "3",
+            ["9648715920"] = "6",
+            ["9648752438"] = "2",
+            ["9648749145"] = "8",
+            ["9648759883"] = "9",
+            ["9648738553"] = "8"
+        }
+
+        local function Notify(title, content)
+            Rayfield:Notify({
+                Title = title,
+                Content = content,
+                Duration = 5
+            })
+        end
+
+        -- Get Map
+        local map = workspace:FindFirstChild("Map")
+
+        if not map then
+            Notify("Open Bunker", "Map not found.")
+            return
+        end
+
+        -- Get code GUI
+        local codeBrick = map:FindFirstChild("CodeBrick")
+        local surfaceGui = codeBrick and codeBrick:FindFirstChild("SurfaceGui")
+
+        if not surfaceGui then
+            Notify("Open Bunker", "CodeBrick/SurfaceGui not found.")
+            return
+        end
+
+        -- Find IMGTemplate objects
+        local templates = {}
+
+        for _, obj in ipairs(surfaceGui:GetChildren()) do
+            if obj.Name == "IMGTemplate" then
+                table.insert(templates, obj)
+            end
+        end
+
+        if #templates ~= 4 then
+            Notify(
+                "Open Bunker",
+                "Found " .. #templates .. " images instead of 4."
+            )
+            return
+        end
+
+        -- Sort images left to right
+        table.sort(templates, function(a, b)
+            local ax = a.AbsolutePosition.X
+            local bx = b.AbsolutePosition.X
+
+            if math.abs(ax - bx) > 1 then
+                return ax < bx
+            end
+
+            return a.AbsolutePosition.Y < b.AbsolutePosition.Y
+        end)
+
+        local result = {}
+
+        -- Convert images to digits
+        for i, imageObject in ipairs(templates) do
+            local image = tostring(imageObject.Image)
+
+            local assetId =
+                image:match("[?&]id=(%d+)")
+                or image:match("rbxassetid://(%d+)")
+                or image:match("(%d+)$")
+
+            local digit = assetId and codes[assetId]
+
+            if not digit then
+                Notify(
+                    "Open Bunker",
+                    "Unknown image at position " .. i .. ": " .. image
+                )
+                return
+            end
+
+            result[i] = digit
+        end
+
+        local CodeEsp = table.concat(result)
+
+        -- Get bunker door
+        local originOffice = map:FindFirstChild("OriginOffice")
+
+        if not originOffice then
+            Notify("Open Bunker", "OriginOffice not found.")
+            return
+        end
+
+        local codeDoor = originOffice:FindFirstChild("CodeDoor")
+        local door = codeDoor and codeDoor:FindFirstChild("Door")
+
+        if not door then
+            Notify("Open Bunker", "Door not found.")
+            return
+        end
+
+        -- Get keypad
+        local keypad = door:FindFirstChild("Keypad")
+        local buttonsFolder = keypad and keypad:FindFirstChild("Buttons")
+
+        if not buttonsFolder then
+            Notify("Open Bunker", "Keypad Buttons not found.")
+            return
+        end
+
+        -- Reset keypad
+        local resetButton = buttonsFolder:FindFirstChild("Reset")
+
+        if not resetButton then
+            Notify("Open Bunker", "Reset button not found.")
+            return
+        end
+
+        local resetDetector =
+            resetButton:FindFirstChildOfClass("ClickDetector")
+
+        if not resetDetector then
+            Notify("Open Bunker", "ClickDetector missing from Reset.")
+            return
+        end
+
+        fireclickdetector(resetDetector)
+        task.wait(0.2)
+
+        -- Enter code
+        for i = 1, #CodeEsp do
+            local digit = CodeEsp:sub(i, i)
+            local button = buttonsFolder:FindFirstChild(digit)
+
+            if not button then
+                Notify("Open Bunker", "Button " .. digit .. " not found.")
+                return
+            end
+
+            local clickDetector =
+                button:FindFirstChildOfClass("ClickDetector")
+
+            if not clickDetector then
+                Notify(
+                    "Open Bunker",
+                    "ClickDetector missing from button " .. digit .. "."
+                )
+                return
+            end
+
+            fireclickdetector(clickDetector)
+            task.wait(0.15)
+        end
+
+        -- Press Enter
+        local enterButton = buttonsFolder:FindFirstChild("Enter")
+
+        if not enterButton then
+            Notify("Open Bunker", "Enter button not found.")
+            return
+        end
+
+        local enterDetector =
+            enterButton:FindFirstChildOfClass("ClickDetector")
+
+        if not enterDetector then
+            Notify("Open Bunker", "ClickDetector missing from Enter.")
+            return
+        end
+
+        fireclickdetector(enterDetector)
+
+        Notify(
+            "Bunker Code Entered [ " .. CodeEsp .. " ]",
+            "Keypad reset and code entered. No teleport performed."
+        )
+    end
+})
+
+OtherTab:CreateButton({
+	Name = "Show Lab Code",
+	Callback = function()
+
+		local codes = {
+			["9648755440"] = "8",
+			["9648765536"] = "2",
+			["9648723237"] = "3",
+			["9648718450"] = "6",
+			["9648769161"] = "4",
+			["9648730082"] = "6",
+			["9648734698"] = "2",
+			["9648712563"] = "2",
+			["9648742013"] = "7",
+			["9648745618"] = "3",
+			["9648715920"] = "6",
+			["9648752438"] = "2",
+			["9648749145"] = "8",
+			["9648759883"] = "9",
+			["9648738553"] = "8"
+		}
+
+		-- Get Map
+		local map = workspace:FindFirstChild("Map")
+
+		if not map then
+			Rayfield:Notify({
+				Title = "Show Lab Code",
+				Content = "Map not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Get code GUI
+		local codeBrick = map:FindFirstChild("CodeBrick")
+		local surfaceGui = codeBrick and codeBrick:FindFirstChild("SurfaceGui")
+
+		if not surfaceGui then
+			Rayfield:Notify({
+				Title = "Show Lab Code",
+				Content = "CodeBrick/SurfaceGui not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Find IMGTemplate objects
+		local templates = {}
+
+		for _, obj in ipairs(surfaceGui:GetChildren()) do
+			if obj.Name == "IMGTemplate" then
+				table.insert(templates, obj)
+			end
+		end
+
+		if #templates ~= 4 then
+			Rayfield:Notify({
+				Title = "Show Lab Code",
+				Content = "Found " .. #templates .. " images instead of 4.",
+				Duration = 5
+			})
+			return
+		end
+
+		-- Sort images left to right
+		table.sort(templates, function(a, b)
+			local ax = a.AbsolutePosition.X
+			local bx = b.AbsolutePosition.X
+
+			if math.abs(ax - bx) > 1 then
+				return ax < bx
+			end
+
+			return a.AbsolutePosition.Y < b.AbsolutePosition.Y
+		end)
+
+		local result = {}
+
+		-- Convert images to digits
+		for i, imageObject in ipairs(templates) do
+
+			local image = tostring(imageObject.Image)
+
+			local assetId =
+				image:match("[?&]id=(%d+)")
+				or image:match("rbxassetid://(%d+)")
+				or image:match("(%d+)$")
+
+			local digit = assetId and codes[assetId]
+
+			if not digit then
+				Rayfield:Notify({
+					Title = "Show Lab Code",
+					Content = "Unknown image at position "
+						.. i .. ": " .. image,
+					Duration = 5
+				})
+				return
+			end
+
+			result[i] = digit
+		end
+
+		local CodeEsp = table.concat(result)
+
+		-- Show code for 10 seconds
+		Rayfield:Notify({
+			Title = "Lab Code: " .. CodeEsp,
+			Content = "Code will disappear in 10 seconds.",
+			Duration = 10
+		})
+	end
+})
+
+local LobbyHiderEnabled = false
+
+OtherTab:CreateToggle({
+    Name = "Lobby Hider",
+    CurrentValue = false,
+    Flag = "LobbyHider",
+    Callback = function(Value)
+        LobbyHiderEnabled = Value
+
+        if Value then
+            local hrp = Char:FindFirstChild("HumanoidRootPart")
+            local lobby = workspace:FindFirstChild("Lobby")
+            local ceiling = lobby and lobby:FindFirstChild("Ceiling")
+
+            if hrp and ceiling then
+                local base = ceiling.Position
+                local top = Ground(base + Vector3.new(0, 50, 0))
+
+                hrp.CFrame = CFrame.new(
+                    top + Vector3.new(0, 2, 0),
+                    top + Vector3.new(0, 2, 0) + hrp.CFrame.LookVector
+                )
+            end
+        end
+    end
+})
+
+CreateSavedToggle(SafetyTab, {
+	Name = "Anti Acid",
+	CurrentValue = false,
+	Callback = function(v)
+		_G.AntiAcid = v
+	end
+})
+
+CreateSavedToggle(SafetyTab, {
+	Name = "Anti Lava",
+	CurrentValue = false,
+	Callback = function(v)
+		_G.AntiLava = v
+	end
+})
+
+local AntiCubeOfDeathEnabled = false
+
+CreateSavedToggle(SafetyTab, {
+	Name = "Anti Cube of Death",
+	CurrentValue = false,
+	Callback = function(v)
+		AntiCubeOfDeathEnabled = v
+	end
+})
+
+task.spawn(function()
+	while true do
+		if AntiCubeOfDeathEnabled then
+			local rubble = workspace:FindFirstChild("Rubbled Remains")
+
+			if rubble then
+				for _, obj in ipairs(rubble:GetDescendants()) do
+					if obj.Name == "Cube of Death"
+						or obj.Name == "Death"
+						or obj.Name == "■" then
+						obj:Destroy()
+					end
+				end
+			end
+		end
+
+		task.wait(0.1)
+	end
+end)
+
+CreateSavedToggle(SafetyTab, {
+	Name = "Anti Knockback",
+	CurrentValue = false,
+	Callback = function(v)
+		_G.AntiKnockback = v
+	end
+})
+
+local GoUnderMapTeleportedDown = false
+local GoUnderMapToggleWasOn = false
+
+CreateSavedToggle(SafetyTab, {
+	Name = "Go Under Map (Use Anti Acid with this for it to not get you killed)",
+	CurrentValue = false,
+	Callback = function(Value)
+		local Players = game:GetService("Players")
+		local LocalPlayer = Players.LocalPlayer
+
+		-- Ignore duplicate callbacks (including saved-settings UI restoration).
+		-- The return-to-terrain action is allowed only on a real ON -> OFF transition.
+		if Value == GoUnderMapToggleWasOn then
+			return
+		end
+
+		local wasOn = GoUnderMapToggleWasOn
+		GoUnderMapToggleWasOn = Value
+
+		if Value then
+			local character = LocalPlayer.Character
+				or LocalPlayer.CharacterAdded:Wait()
+			local rootPart = character:FindFirstChild("HumanoidRootPart")
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+			if not rootPart or not humanoid then
+				GoUnderMapToggleWasOn = false
+				Rayfield:Notify({
+					Title = "Go Under Map",
+					Content = "Character not ready.",
+					Duration = 5
+				})
+				return
+			end
+
+			if _G.GoUnderMapCooldown then
+				GoUnderMapToggleWasOn = false
+				Rayfield:Notify({
+					Title = "Go Under Map",
+					Content = "Teleport is on cooldown.",
+					Duration = 2
+				})
+				return
+			end
+
+			_G.GoUnderMapCooldown = true
+			rootPart.CFrame = rootPart.CFrame + Vector3.new(0, -30, 0)
+			GoUnderMapTeleportedDown = true
+
+			Rayfield:Notify({
+				Title = "Go Under Map",
+				Content = "Teleported 30 studs down.",
+				Duration = 3
+			})
+
+			task.delay(2, function()
+				_G.GoUnderMapCooldown = false
+			end)
+			return
+		end
+
+		-- OFF transition: only continue if it really was ON and this toggle
+		-- actually teleported the character down during this run.
+		if not wasOn or not GoUnderMapTeleportedDown then
+			return
+		end
+
+		if _G.GoUnderMapCooldown then
+			-- Keep the state marked as down so the user can toggle OFF again
+			-- after cooldown; do not teleport as a side effect of restoration.
+			GoUnderMapToggleWasOn = true
+			return
+		end
+
+		local character = LocalPlayer.Character
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+		if not rootPart then
+			return
+		end
+
+		_G.GoUnderMapCooldown = true
+
+		local terrain = workspace:FindFirstChildOfClass("Terrain")
+		if not terrain then
+			_G.GoUnderMapCooldown = false
+			GoUnderMapToggleWasOn = true
+			Rayfield:Notify({
+				Title = "Go Under Map",
+				Content = "Terrain not found.",
+				Duration = 5
+			})
+			return
+		end
+
+		local rayOrigin = rootPart.Position + Vector3.new(0, 1000, 0)
+		local rayDirection = Vector3.new(0, -2000, 0)
+		local rayParams = RaycastParams.new()
+		rayParams.FilterType = Enum.RaycastFilterType.Include
+		rayParams.FilterDescendantsInstances = { terrain }
+		rayParams.IgnoreWater = true
+
+		local rayResult = workspace:Raycast(rayOrigin, rayDirection, rayParams)
+		if not rayResult then
+			_G.GoUnderMapCooldown = false
+			GoUnderMapToggleWasOn = true
+			Rayfield:Notify({
+				Title = "Go Under Map",
+				Content = "Could not find the top of the terrain.",
+				Duration = 5
+			})
+			return
+		end
+
+		local halfHeight = rootPart.Size.Y / 2
+		local targetPosition = rayResult.Position + Vector3.new(0, halfHeight + 2, 0)
+		local currentRotation = rootPart.CFrame - rootPart.CFrame.Position
+		rootPart.CFrame = CFrame.new(targetPosition) * currentRotation
+
+		GoUnderMapTeleportedDown = false
+
+		Rayfield:Notify({
+			Title = "Go Under Map",
+			Content = "Teleported on top of the terrain.",
+			Duration = 3
+		})
+
+		task.delay(2, function()
+			_G.GoUnderMapCooldown = false
+		end)
+	end
+})
+
+BusJumping.OnClientEvent:Connect(function()
+	if ILEnabled then
+		InstantLand()
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if EBJEnabled then
+			local head=Char:FindFirstChild("Head")
+			if head and head.Transparency==1 then
+				BusJumping:FireServer()
+			end
+		end
+		task.wait(0.05)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if RemoveZoneEnabled then
+			for _,obj in ipairs(game:GetDescendants()) do
+				if obj.Name=="ZoneEffects" then
+					obj:Destroy()
+				end
+			end
+		end
+		task.wait(1)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if DeleteSeatsEnabled then
+			for _,obj in ipairs(game:GetDescendants()) do
+				if obj:IsA("Seat") or obj:IsA("VehicleSeat") then
+					obj:Destroy()
+				end
+			end
+		end
+		task.wait(1)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if hrpGlobalSliderUsed then
+			for _,player in ipairs(Players:GetPlayers()) do
+				if player~=LocalPlayer then
+					local c=player.Character
+					local hrp=c and c:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						hrp.Size=Vector3.new(globalHRPSize,globalHRPSize,globalHRPSize)
+						hrp.Transparency=0.8
+						hrp.CanCollide=false
+					end
+				end
+			end
+			for _,npc in ipairs(workspace:GetDescendants()) do
+				if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc~=Char then
+					local hrp=npc:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						hrp.Size=Vector3.new(globalHRPSize,globalHRPSize,globalHRPSize)
+						hrp.Transparency=0.8
+						hrp.CanCollide=false
+					end
+				end
+			end
+		end
+		task.wait(0.3)
+	end
+end)
+
+
+
+-- Hide Local Username In GUIs
+-- Place this inside your OtherTab section
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+local HideUsernameEnabled = false
+local OriginalTexts = {}
+local TextConnections = {}
+local ScanLoopRunning = false
+
+local function ReplaceUsername(instance)
+    if not HideUsernameEnabled then
+        return
+    end
+
+    if not (
+        instance:IsA("TextLabel")
+        or instance:IsA("TextButton")
+        or instance:IsA("TextBox")
+    ) then
+        return
+    end
+
+    local success, currentText = pcall(function()
+        return instance.Text
+    end)
+
+    if not success or type(currentText) ~= "string" then
+        return
+    end
+
+    if not string.find(currentText, LocalPlayer.Name, 1, true) then
+        return
+    end
+
+    if OriginalTexts[instance] == nil then
+        OriginalTexts[instance] = currentText
+    end
+
+    local replacedText = string.gsub(
+        currentText,
+        LocalPlayer.Name,
+        "..."
+    )
+
+    pcall(function()
+        instance.Text = replacedText
+    end)
+end
+
+local function ScanGui(container)
+    local success, descendants = pcall(function()
+        return container:GetDescendants()
+    end)
+
+    if not success then
+        return
+    end
+
+    for _, instance in ipairs(descendants) do
+        ReplaceUsername(instance)
+    end
+end
+
+local function StopConnections()
+    for container, connection in pairs(TextConnections) do
+        connection:Disconnect()
+        TextConnections[container] = nil
+    end
+end
+
+local function EnableUsernameHiding()
+    if ScanLoopRunning then
+        return
+    end
+
+    ScanLoopRunning = true
+
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+    for _, container in ipairs({PlayerGui, CoreGui}) do
+        if not TextConnections[container] then
+            local success, connection = pcall(function()
+                return container.DescendantAdded:Connect(function(instance)
+                    task.defer(function()
+                        ReplaceUsername(instance)
+                    end)
+                end)
+            end)
+
+            if success then
+                TextConnections[container] = connection
+            end
+        end
+    end
+
+    task.spawn(function()
+        while HideUsernameEnabled and ScanLoopRunning do
+            ScanGui(PlayerGui)
+            ScanGui(CoreGui)
+
+            task.wait(0)
+        end
+
+        ScanLoopRunning = false
+    end)
+end
+
+local function DisableUsernameHiding()
+    HideUsernameEnabled = false
+    ScanLoopRunning = false
+
+    StopConnections()
+
+    for instance, originalText in pairs(OriginalTexts) do
+        if instance and instance.Parent then
+            pcall(function()
+                instance.Text = originalText
+            end)
+        end
+    end
+
+    table.clear(OriginalTexts)
+end
+
+OtherTab:CreateToggle({
+    Name = "Hide Username",
+    CurrentValue = false,
+    Flag = "HideMyUsernameInGUIs",
+
+    Callback = function(value)
+        HideUsernameEnabled = value
+
+        if value then
+            EnableUsernameHiding()
+        else
+            DisableUsernameHiding()
+        end
+    end
+})
+
+
+-- ZONE CENTER PUSH
+-- Requires Rayfield and SafetyTab to already exist.
+-- Zone1 must be a BasePart or MeshPart in Workspace.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Player = Players.LocalPlayer
+
+local Enabled = false
+local ForceStrength = 1
+local CHECK_INTERVAL = 0.1
+local MAX_SPEED = 70
+
+local loopConnection
+local elapsed = 0
+local wasPushing = false
+local lastWarning = 0
+
+local function notify(title, message)
+    Rayfield:Notify({
+        Title = title,
+        Content = message,
+        Duration = 3
+    })
+end
+
+local function getZone()
+    local zone = Workspace:FindFirstChild("Zone1", true)
+
+    if zone and zone:IsA("BasePart") then
+        return zone
+    end
+
+    return nil
+end
+
+local function stopLoop()
+    if loopConnection then
+        loopConnection:Disconnect()
+        loopConnection = nil
+    end
+
+    elapsed = 0
+    wasPushing = false
+end
+
+local function pushTowardCenter(root, zone)
+    -- Direction FROM the player TO Zone1's center.
+    local offset = zone.Position - root.Position
+    local direction = Vector3.new(offset.X, 0, offset.Z)
+
+    if direction.Magnitude < 0.1 then
+        return
+    end
+
+    direction = direction.Unit
+
+    -- Capped horizontal speed.
+    local speed = math.min(ForceStrength * 0.5, MAX_SPEED)
+    local velocity = root.AssemblyLinearVelocity
+
+    root.AssemblyLinearVelocity = Vector3.new(
+        direction.X * speed,
+        velocity.Y,
+        direction.Z * speed
+    )
+end
+
+local function startLoop()
+    stopLoop()
+
+    loopConnection = RunService.Heartbeat:Connect(function(dt)
+        if not Enabled then
+            return
+        end
+
+        elapsed += dt
+        if elapsed < CHECK_INTERVAL then
+            return
+        end
+        elapsed = 0
+
+        -- Recheck Zone1 every 0.1 seconds.
+        local zone = getZone()
+
+        if not zone then
+            if os.clock() - lastWarning > 3 then
+                lastWarning = os.clock()
+                notify("Zone Center Push", "Zone1 wasn't found in Workspace.")
+            end
+            return
+        end
+
+        local character = Player.Character
+        if not character then
+            return
+        end
+
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local root = character:FindFirstChild("HumanoidRootPart")
+
+        if not humanoid or not root or humanoid.Health <= 0 then
+            return
+        end
+
+        -- Stop once the character is outside the zone.
+        local inside = character:GetAttribute("inZone") == true
+
+        if inside then
+            pushTowardCenter(root, zone)
+
+            if not wasPushing then
+                notify("Zone Center Push", "Pushing toward Zone1's center!")
+            end
+
+            wasPushing = true
+        else
+            if wasPushing then
+                notify("Zone Center Push", "Outside the zone. Push stopped.")
+            end
+
+            wasPushing = false
+        end
+    end)
+end
+
+-- Rayfield toggle
+SafetyTab:CreateToggle({
+    Name = "Zone Center Push (Use after storm has appeared)",
+    CurrentValue = false,
+    Flag = "ZoneCenterPush",
+    Callback = function(value)
+        Enabled = value
+
+        if value then
+            if not getZone() then
+                Enabled = false
+                notify("Zone Center Push", "Couldn't find Zone1 in Workspace.")
+                return
+            end
+
+            startLoop()
+            notify("Zone Center Push", "Enabled! Force starts at 1.")
+        else
+            stopLoop()
+            notify("Zone Center Push", "Disabled.")
+        end
+    end
+})
+
+-- Rayfield force slider
+SafetyTab:CreateSlider({
+    Name = "Center Push Force",
+    Range = {1, 100},
+    Increment = 1,
+    Suffix = " Force",
+    CurrentValue = 1,
+    Flag = "ZoneCenterPushForce",
+    Callback = function(value)
+        ForceStrength = value
+    end
+})
+
+-- Handle respawning
+Player.CharacterAdded:Connect(function()
+    task.wait(1)
+
+    if Enabled then
+        startLoop()
+    end
+end)
+
+
+SafetyTab:CreateToggle({
+    Name = "Auto Heal",
+    CurrentValue = false,
+    Flag = "AutoHeal",
+    Callback = function(Value)
+        autoHealEnabled = Value
+
+        if autoHealConnection then
+            autoHealConnection:Disconnect()
+            autoHealConnection = nil
+        end
+
+        if not Value then
+            return
+        end
+
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+
+        local player = Players.LocalPlayer
+        local healing = false
+
+        autoHealConnection = RunService.Heartbeat:Connect(function()
+            if healing or not autoHealEnabled then
+                return
+            end
+
+            local character = player.Character
+            if not character then return end
+
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then
+                return
+            end
+
+            local healthPercent =
+                (humanoid.Health / humanoid.MaxHealth) * 100
+
+            local threshold, tools
+
+            if healthPercent < 30 then
+                threshold = 30
+                tools = {
+                    "Apple",
+                    "Bandage",
+                    "First Aid Kit",
+                    "Healing Potion"
+                }
+            elseif healthPercent < 40 then
+                threshold = 40
+                tools = {
+                    "Apple",
+                    "Bandage",
+                    "First Aid Kit"
+                }
+            elseif healthPercent < 60 then
+                threshold = 60
+                tools = {
+                    "Apple",
+                    "Bandage"
+                }
+            elseif healthPercent < 80 then
+                threshold = 80
+                tools = {"Apple"}
+            else
+                return
+            end
+
+            healing = true
+
+            task.spawn(function()
+                local backpack = player:FindFirstChild("Backpack")
+
+                if not backpack then
+                    healing = false
+                    return
+                end
+
+                local function useOnce(toolName)
+                    if not autoHealEnabled
+                        or player.Character ~= character
+                        or humanoid.Health <= 0 then
+                        return false
+                    end
+
+                    local tool = backpack:FindFirstChild(toolName)
+                    if not tool or not tool:IsA("Tool") then
+                        return false
+                    end
+
+                    -- Save the currently equipped tool.
+                    local equippedTool
+
+                    for _, child in ipairs(character:GetChildren()) do
+                        if child:IsA("Tool")
+                            and child.Name ~= toolName
+                            and child.Name ~= "Glove" then
+
+                            equippedTool = child
+                            child.Parent = backpack
+                            break
+                        end
+                    end
+
+                    humanoid:UnequipTools()
+                    task.wait(0.1)
+
+                    if not autoHealEnabled then
+                        if equippedTool then
+                            humanoid:EquipTool(equippedTool)
+                        end
+                        return false
+                    end
+
+                    tool.Parent = character
+                    task.wait(0.25)
+
+                    tool:Activate()
+                    task.wait(0.35)
+
+                    -- Rayfield popup only after activating a tool.
+                    if autoHealEnabled then
+                        Rayfield:Notify({
+                            Title = "Auto Heal",
+                            Content = "Used " .. toolName .. " to heal!",
+                            Duration = 2,
+                            Image = "heart-pulse"
+                        })
+                    end
+
+                    if equippedTool
+                        and equippedTool.Parent == backpack
+                        and humanoid.Health > 0 then
+                        humanoid:EquipTool(equippedTool)
+                    end
+
+                    return true
+                end
+
+                while autoHealEnabled
+                    and player.Character == character
+                    and humanoid.Health > 0
+                    and (humanoid.Health / humanoid.MaxHealth) * 100
+                        < threshold do
+
+                    local used = false
+
+                    for _, toolName in ipairs(tools) do
+                        if useOnce(toolName) then
+                            used = true
+                            break
+                        end
+                    end
+
+                    if not used then
+                        break
+                    end
+
+                    task.wait(0.15)
+                end
+
+                healing = false
+            end)
+        end)
+    end,
+})
+
+
+
+local function GetPermanentItemsCountdown()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+
+    local countdownGui = playerGui:FindFirstChild("Countdown")
+    if not countdownGui then return nil end
+
+    local countdownFrame = countdownGui:FindFirstChild("Countdown")
+    if not countdownFrame then return nil end
+
+    local timeLeft = countdownFrame:FindFirstChild("TimeLeft")
+    if not timeLeft then return nil end
+
+    local number = string.match(timeLeft.Text, "%d+%.?%d*")
+    return number and tonumber(number) or nil
+end
+
+task.spawn(function()
+    local itemsAllowed = false
+    local reachedOne = false
+    local notified = false
+
+    while true do
+        local success, countdown = pcall(GetPermanentItemsCountdown)
+
+        if not success or countdown == nil then
+            itemsAllowed = false
+            reachedOne = false
+            notified = false
+
+        elseif countdown > 1 then
+            itemsAllowed = false
+            reachedOne = false
+            notified = false
+
+        elseif not reachedOne then
+            reachedOne = true
+            itemsAllowed = false
+
+            task.wait(1)
+
+            local checkOK, current = pcall(GetPermanentItemsCountdown)
+
+            if checkOK and current ~= nil and current <= 1 then
+                itemsAllowed = true
+            else
+                reachedOne = false
+            end
+        end
+
+        -- Only use items when the Use Items toggle is enabled.
+        if AutoUseEnabled and itemsAllowed then
+            local character = LocalPlayer.Character
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+            local usedCount = 0
+
+            if character and backpack then
+                for _, tool in ipairs(backpack:GetChildren()) do
+                    if not AutoUseEnabled or not itemsAllowed then
+                        break
+                    end
+
+                    if AutoUseList and AutoUseList[tool.Name] then
+                        local equipped = pcall(function()
+                            tool.Parent = character
+                        end)
+
+                        if equipped then
+                            task.wait(0.37)
+
+                            if AutoUseEnabled and itemsAllowed then
+                                local activated = pcall(function()
+                                    tool:Activate()
+                                end)
+
+                                if activated then
+                                    usedCount = usedCount + 1
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            if usedCount > 0 and not notified then
+                notified = true
+
+                Rayfield:Notify({
+                    Title = "Use Permanent Items",
+                    Content = "Used " .. usedCount .. " item(s)",
+                    Duration = 5
+                })
+            end
+        end
+
+        task.wait(0.2)
+    end
+end)
+
+--==================================================
+-- GET ITEMS
+--==================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local lp = Players.LocalPlayer
+local char = lp.Character or lp.CharacterAdded:Wait()
+
+local Items = workspace:WaitForChild("Items")
+local ItemRemote = ReplicatedStorage.Remotes.Item
+local BusJumping = ReplicatedStorage.Remotes.BusJumping
+
+--==================================================
+-- STATE
+--==================================================
+
+local blocked = false
+local recoveryRunning = false
+local lastPicked = nil
+
+local BombPickedThisRound = false
+local BombTeleportedThisRound = false
+
+local ContinueAfterBusEnabled = false
+local ContinueAfterBusRunning = false
+
+local CollectionRunning = false
+local CollectionCooldown = false
+
+-- Fast: first collection = 5, then 8
+-- Slow: first collection = 2, then 4
+local CollectionCycle = 0
+
+--==================================================
+-- ALLOWED ITEMS
+--==================================================
+
+local AllowedTools = {
+	["Bomb"] = true,
+	["Potion of Strength"] = true,
+	["Bull's essence"] = true,
+	["Boba"] = true,
+	["Speed Potion"] = true,
+	["Frog Potion"] = true
+}
+
+--==================================================
+-- CHARACTER
+--==================================================
+
+local function UpdateCharacter(c)
+	char = c
+
+	blocked = false
+	recoveryRunning = false
+	lastPicked = nil
+
+	BombPickedThisRound = false
+	BombTeleportedThisRound = false
+
+	CollectionRunning = false
+	CollectionCooldown = false
+	ContinueAfterBusRunning = false
+
+	CollectionCycle = 0
+end
+
+lp.CharacterAdded:Connect(UpdateCharacter)
+
+--==================================================
+-- COUNTDOWN
+--==================================================
+
+local function GetCountdownObject()
+	local countdown = lp.PlayerGui:FindFirstChild("Countdown")
+	local container = countdown and countdown:FindFirstChild("Countdown")
+
+	return container and container:FindFirstChild("TimeLeft")
+end
+
+local function GetCountdown()
+	local obj = GetCountdownObject()
+
+	if not obj then
+		return nil
+	end
+
+	return tonumber(obj.Text)
+end
+
+local function CountdownAllowed()
+	local value = GetCountdown()
+
+	return value ~= nil
+		and value >= 1
+		and value <= 3
+end
+
+--==================================================
+-- BODY PARTS
+--==================================================
+
+local function GetRightLeg(c)
+	if not c then
+		return nil
+	end
+
+	return c:FindFirstChild("RightUpperLeg")
+		or c:FindFirstChild("RightLowerLeg")
+		or c:FindFirstChild("RightFoot")
+		or c:FindFirstChild("Right Leg")
+end
+
+local function GetTorso(c)
+	c = c or lp.Character
+
+	if not c then
+		return nil
+	end
+
+	return c:FindFirstChild("UpperTorso")
+		or c:FindFirstChild("Torso")
+end
+
+--==================================================
+-- FIND ALLOWED TOOL
+--==================================================
+
+local function FindAllowedTool(maxDistance)
+	local currentChar = lp.Character
+	local hrp = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+
+	if not hrp then
+		return nil
+	end
+
+	local closest = nil
+	local closestDistance = maxDistance or math.huge
+
+	for _, tool in ipairs(Items:GetChildren()) do
+
+		if tool:IsA("Tool")
+			and AllowedTools[tool.Name] then
+
+			local handle = tool:FindFirstChild("Handle")
+
+			if handle then
+
+				local distance =
+					(handle.Position - hrp.Position).Magnitude
+
+				if distance < closestDistance then
+					closestDistance = distance
+					closest = tool
+				end
+			end
+		end
+	end
+
+	return closest
+end
+
+--==================================================
+-- PICKUP
+--==================================================
+
+local function Pickup(handle)
+
+	if not GetItemsEnabled then
+		return false
+	end
+
+	if blocked or recoveryRunning then
+		return false
+	end
+
+	if not CountdownAllowed() then
+		return false
+	end
+
+	if not handle or not handle.Parent then
+		return false
+	end
+
+	local id = handle:GetAttribute("ItemId")
+
+	if not id then
+		return false
+	end
+
+	ItemRemote:FireServer(id)
+
+	local gui = handle:FindFirstChild("ItemGui")
+
+	if gui then
+		gui.Enabled = false
+	end
+
+	return true
+end
+
+--==================================================
+-- TELEPORT TO TOOL WITHOUT PICKUP
+--==================================================
+
+local function TPToToolWithoutPickup(tool)
+
+	if not tool or not tool.Parent then
+		return false
+	end
+
+	local currentChar = lp.Character
+
+	local hrp =
+		currentChar
+		and currentChar:FindFirstChild("HumanoidRootPart")
+
+	local handle = tool:FindFirstChild("Handle")
+
+	if not hrp or not handle then
+		return false
+	end
+
+	local toolPos = handle.Position
+
+	local sideDirs = {
+		Vector3.new(3, 0, 0),
+		Vector3.new(-3, 0, 0),
+		Vector3.new(0, 0, 3),
+		Vector3.new(0, 0, -3)
+	}
+
+	local chosenSide = nil
+
+	for _, dir in ipairs(sideDirs) do
+
+		local ray = workspace:Raycast(
+			toolPos,
+			dir,
+			RayParams
+		)
+
+		if not ray then
+			chosenSide = dir
+			break
+		end
+	end
+
+	if chosenSide then
+
+		hrp.CFrame = CFrame.new(
+			toolPos + chosenSide,
+			toolPos
+		)
+
+	else
+
+		local rightVector
+
+		if Camera then
+			rightVector = Camera.CFrame.RightVector
+		else
+			rightVector = Vector3.new(1, 0, 0)
+		end
+
+		local sidePos =
+			toolPos + rightVector * 4
+
+		hrp.CFrame = CFrame.new(
+			sidePos,
+			toolPos
+		)
+	end
+
+	return true
+end
+
+--==================================================
+-- TELEPORT + PICKUP
+--==================================================
+
+local function TPWaitLookPickup(tool)
+
+	if not tool or not tool.Parent then
+		return false
+	end
+
+	if lastPicked == tool then
+		return false
+	end
+
+	if not GetItemsEnabled then
+		return false
+	end
+
+	if blocked or recoveryRunning then
+		return false
+	end
+
+	if not CountdownAllowed() then
+		return false
+	end
+
+	local currentChar = lp.Character
+
+	local hrp =
+		currentChar
+		and currentChar:FindFirstChild("HumanoidRootPart")
+
+	local handle = tool:FindFirstChild("Handle")
+
+	if not hrp or not handle then
+		return false
+	end
+
+	lastPicked = tool
+
+	local toolPos = handle.Position
+
+	local sideDirs = {
+		Vector3.new(2, 0, 0),
+		Vector3.new(-2, 0, 0),
+		Vector3.new(0, 0, 2),
+		Vector3.new(0, 0, -2)
+	}
+
+	local chosenSide = nil
+
+	for _, dir in ipairs(sideDirs) do
+
+		local ray = workspace:Raycast(
+			toolPos,
+			dir,
+			RayParams
+		)
+
+		if not ray then
+			chosenSide = dir
+			break
+		end
+	end
+
+	if chosenSide then
+
+		hrp.CFrame = CFrame.new(
+			toolPos + chosenSide,
+			toolPos
+		)
+
+	else
+
+		local rightVector
+
+		if Camera then
+			rightVector = Camera.CFrame.RightVector
+		else
+			rightVector = Vector3.new(1, 0, 0)
+		end
+
+		local sidePos =
+			toolPos + rightVector * 4
+
+		hrp.CFrame = CFrame.new(
+			sidePos,
+			toolPos
+		)
+	end
+
+	task.wait(GetItemsMode == "Fast" and 0.3 or 0.5)
+
+	if not GetItemsEnabled then
+		return false
+	end
+
+	if blocked or recoveryRunning then
+		return false
+	end
+
+	if not CountdownAllowed() then
+		return false
+	end
+
+	if not handle or not handle.Parent then
+		return false
+	end
+
+	hrp.CFrame = CFrame.new(
+		hrp.Position,
+		toolPos
+	)
+
+	local success = Pickup(handle)
+
+	task.wait(GetItemsMode == "Fast" and 0.2 or 0.4)
+
+	return success
+end
+
+--==================================================
+-- GET ITEMS IN ORDER
+--==================================================
+
+local function GetOrderedItems()
+
+	local bomb = nil
+
+	local strengthList = {}
+	local bullList = {}
+	local bobaList = {}
+	local speedList = {}
+	local frogList = {}
+
+	for _, obj in ipairs(Items:GetChildren()) do
+
+		if obj:IsA("Tool") then
+
+			local handle = obj:FindFirstChild("Handle")
+
+			if handle then
+
+				if obj.Name == "Bomb"
+					and not BombPickedThisRound
+					and not BombTeleportedThisRound
+					and not bomb then
+
+					bomb = obj
+
+				elseif obj.Name == "Potion of Strength" then
+
+					table.insert(
+						strengthList,
+						obj
+					)
+
+				elseif obj.Name == "Bull's essence" then
+
+					table.insert(
+						bullList,
+						obj
+					)
+
+				elseif obj.Name == "Boba" then
+
+					table.insert(
+						bobaList,
+						obj
+					)
+
+				elseif obj.Name == "Speed Potion" then
+
+					table.insert(
+						speedList,
+						obj
+					)
+
+				elseif obj.Name == "Frog Potion" then
+
+					table.insert(
+						frogList,
+						obj
+					)
+				end
+			end
+		end
+	end
+
+	return {
+		{bomb},
+		strengthList,
+		bullList,
+		bobaList,
+		speedList,
+		frogList
+	}
+end
+
+--==================================================
+-- COLLECT EXACT NUMBER
+--==================================================
+
+local function CollectItems(amount)
+
+	if CollectionRunning then
+		return 0
+	end
+
+	if not GetItemsEnabled then
+		return 0
+	end
+
+	if blocked or recoveryRunning then
+		return 0
+	end
+
+	if not CountdownAllowed() then
+		return 0
+	end
+
+	CollectionRunning = true
+
+	local picked = 0
+
+	local order = GetOrderedItems()
+
+	for _, group in ipairs(order) do
+
+		for _, tool in ipairs(group) do
+
+			if picked >= amount then
+				break
+			end
+
+			if not GetItemsEnabled then
+				break
+			end
+
+			if blocked or recoveryRunning then
+				break
+			end
+
+			if not CountdownAllowed() then
+				break
+			end
+
+			if tool and tool.Parent then
+
+				-- Bomb may only be teleported to once.
+				if tool.Name == "Bomb"
+					and BombTeleportedThisRound then
+
+					continue
+				end
+
+				local success =
+					TPWaitLookPickup(tool)
+
+				if success then
+
+					picked += 1
+
+					if tool.Name == "Bomb" then
+
+						BombPickedThisRound = true
+						BombTeleportedThisRound = true
+					end
+				end
+			end
+		end
+
+		if picked >= amount then
+			break
+		end
+	end
+
+	CollectionRunning = false
+
+	return picked
+end
+
+--==================================================
+-- CONTINUE ITEM COLLECTION AFTER BUS
+--==================================================
+
+CreateSavedToggle(ItemsTab, {
+	Name = "Continue Item Collection after bus",
+	CurrentValue = false,
+
+	Callback = function(v)
+
+		ContinueAfterBusEnabled = v
+
+if v then
+    ILEnabled = false
+    InstantLandingToggle:Set(false)
+end
+
+		if not v then
+
+			-- Disabled:
+			-- stay in the bus
+			-- do not jump
+			-- do not teleport after bus
+			-- do not collect after bus
+
+			GetItemsEnabled = false
+
+			ContinueAfterBusRunning = false
+			CollectionRunning = false
+			CollectionCooldown = false
+
+			lastPicked = nil
+		end
+	end
+})
+
+--==================================================
+-- START BUS COLLECTION
+--==================================================
+
+local function StartBusCollection()
+
+	if not ContinueAfterBusEnabled then
+		return
+	end
+
+	if ContinueAfterBusRunning then
+		return
+	end
+
+	ContinueAfterBusRunning = true
+
+	-- Stop normal item collection while inside bus.
+	GetItemsEnabled = false
+	CollectionRunning = false
+	CollectionCooldown = false
+	lastPicked = nil
+
+	task.wait(0.5)
+
+	-- Check toggle before jumping.
+	if not ContinueAfterBusEnabled then
+
+		GetItemsEnabled = false
+		ContinueAfterBusRunning = false
+
+		return
+	end
+
+	--==================================================
+	-- JUMP OUT, THEN TELEPORT TO TOOL
+	--==================================================
+
+	if ContinueAfterBusEnabled then
+
+		-- Jump out first
+		pcall(function()
+			BusJumping:FireServer()
+		end)
+
+		-- Wait 0.1 seconds after jumping
+		task.wait(0.1)
+
+		if not ContinueAfterBusEnabled then
+			return
+		end
+
+		-- Look for a tool after the jump.
+		-- Retry briefly in case the items have not loaded yet.
+		local tool = nil
+
+		for i = 1, 20 do
+
+			if not ContinueAfterBusEnabled then
+				break
+			end
+
+			tool = FindAllowedTool(1000)
+
+			if tool and tool.Parent then
+				break
+			end
+
+			task.wait(0.05)
+		end
+
+		-- Teleport after the tool is found
+		if ContinueAfterBusEnabled and tool and tool.Parent then
+			TPToToolWithoutPickup(tool)
+		end
+	end
+
+	--==================================================
+	-- WAIT AFTER JUMP
+	--==================================================
+
+	task.wait(0.2)
+
+	if not ContinueAfterBusEnabled then
+
+		GetItemsEnabled = false
+		ContinueAfterBusRunning = false
+
+		return
+	end
+
+	--==================================================
+	-- CONFIRM PLAYER IS OUT OF BUS
+	--==================================================
+
+	local startTime = tick()
+	local exitedBus = false
+
+	while tick() - startTime < 10 do
+
+		if not ContinueAfterBusEnabled then
+
+			GetItemsEnabled = false
+			ContinueAfterBusRunning = false
+
+			return
+		end
+
+		local currentChar = lp.Character
+		local torso = GetTorso(currentChar)
+
+		if torso and torso.Transparency < 1 then
+
+			exitedBus = true
+			break
+		end
+
+		task.wait(0.05)
+	end
+
+	if not exitedBus then
+
+		GetItemsEnabled = false
+		ContinueAfterBusRunning = false
+
+		return
+	end
+
+	--==================================================
+	-- WAIT 10 SECONDS AFTER JUMPING OUT
+	--==================================================
+
+	task.wait(10)
+
+	if not ContinueAfterBusEnabled then
+
+		GetItemsEnabled = false
+		ContinueAfterBusRunning = false
+
+		return
+	end
+
+	--==================================================
+	-- DELETE GLIDERS WHILE GET ITEMS IS ENABLED
+	--==================================================
+
+	task.spawn(function()
+		while true do
+			if GetItemsEnabled then
+				for _, obj in ipairs(workspace:GetDescendants()) do
+					if obj.Name == "Glider" then
+						pcall(function()
+							obj:Destroy()
+						end)
+					end
+				end
+			end
+
+			task.wait(0.1)
+		end
+	end)
+
+	--==================================================
+	-- NOW TELEPORT TO BOMB
+	--==================================================
+
+	GetItemsEnabled = true
+
+	if not BombTeleportedThisRound
+		and ContinueAfterBusEnabled then
+
+		local bomb = nil
+
+		for _, tool in ipairs(Items:GetChildren()) do
+
+			if tool:IsA("Tool")
+				and tool.Name == "Bomb"
+				and tool.Parent then
+
+				bomb = tool
+				break
+			end
+		end
+
+		if bomb then
+
+			TPToToolWithoutPickup(bomb)
+
+			BombTeleportedThisRound = true
+		end
+	end
+
+	--==================================================
+	-- COLLECT ITEMS
+	--==================================================
+
+	if ContinueAfterBusEnabled
+		and GetItemsEnabled then
+
+		local amount
+
+		if GetItemsMode == "Fast" then
+			amount = CollectionCycle == 0 and 5 or 8
+		else
+			amount = CollectionCycle == 0 and 3 or 6
+		end
+
+		local picked =
+			CollectItems(amount)
+
+		if picked > 0 then
+
+			CollectionCycle += 1
+
+			-- Mode-specific cooldown after the collection finishes.
+			CollectionCooldown = true
+
+			task.wait(GetItemsMode == "Fast" and 3 or 3)
+
+			CollectionCooldown = false
+		end
+	end
+
+	ContinueAfterBusRunning = false
+end
+
+--==================================================
+-- BUS LEG MONITOR
+--==================================================
+
+local function SetupBusMonitor(c)
+
+	local leg = GetRightLeg(c)
+
+	if not leg then
+		return
+	end
+
+	local previousTransparency =
+		leg.Transparency
+
+	leg:GetPropertyChangedSignal(
+		"Transparency"
+	):Connect(function()
+
+		local currentTransparency =
+			leg.Transparency
+
+		local becameInvisible =
+			previousTransparency < 1
+			and currentTransparency >= 1
+
+		previousTransparency =
+			currentTransparency
+
+		if not becameInvisible then
+			return
+		end
+
+		--==================================================
+		-- CONTINUE OFF
+		--==================================================
+
+		if not ContinueAfterBusEnabled then
+
+			-- Stay in bus.
+			GetItemsEnabled = false
+
+			return
+		end
+
+		--==================================================
+		-- CONTINUE ON
+		--==================================================
+
+		if ContinueAfterBusRunning then
+			return
+		end
+
+		task.spawn(function()
+			StartBusCollection()
+		end)
+
+	end)
+end
+
+SetupBusMonitor(char)
+
+--==================================================
+-- CHARACTER ADDED
+--==================================================
+
+lp.CharacterAdded:Connect(function(c)
+
+	task.wait(0.2)
+
+	char = c
+
+	BombPickedThisRound = false
+	BombTeleportedThisRound = false
+
+	lastPicked = nil
+
+	ContinueAfterBusRunning = false
+	CollectionRunning = false
+	CollectionCooldown = false
+
+	CollectionCycle = 0
+
+	SetupBusMonitor(c)
+end)
+
+
+
+task.spawn(function()
+
+	while true do
+
+		if GetItemsEnabled
+			and not blocked
+			and not recoveryRunning
+			and not ContinueAfterBusRunning
+			and not CollectionCooldown
+			and not CollectionRunning
+			and CountdownAllowed() then
+
+			local amount
+
+			if GetItemsMode == "Fast" then
+				amount = CollectionCycle == 0 and 5 or 8
+			else
+				amount = CollectionCycle == 0 and 2 or 4
+			end
+
+			local picked =
+				CollectItems(amount)
+
+			if picked > 0 then
+
+				CollectionCycle += 1
+
+				-- Mode-specific cooldown after every collection.
+				CollectionCooldown = true
+
+				task.wait(GetItemsMode == "Fast" and 5 or 8)
+
+				CollectionCooldown = false
+			end
+		end
+
+		task.wait(0.1)
+	end
+end)
+
+--==================================================
+-- INSTANT LANDING
+--==================================================
+
+task.spawn(function()
+
+	while true do
+
+		local timeLeftObj =
+			GetCountdownObject()
+
+		if timeLeftObj
+			and timeLeftObj.Text == "1" then
+
+			task.wait(1.2)
+
+			if ILEnabled then
+				InstantLand()
+			end
+		end
+
+		task.wait(0.2)
+	end
+end)
+
+--==================================================
+-- ROUND RESET
+--==================================================
+
+task.spawn(function()
+
+	local wasHigh = false
+
+	while true do
+
+		local value =
+			GetCountdown()
+
+		if value and value > 3 then
+
+			if not wasHigh then
+
+				BombPickedThisRound = false
+				BombTeleportedThisRound = false
+
+				lastPicked = nil
+
+				CollectionCycle = 0
+
+				CollectionRunning = false
+				CollectionCooldown = false
+			end
+
+			wasHigh = true
+
+		else
+
+			wasHigh = false
+		end
+
+		task.wait(0.5)
+	end
+end)
+
+
+local lastSlap = 0
+
+local function IsRagdolled(character)
+    if not character then
+        return true
+    end
+
+    -- Check common ragdoll attributes
+    for _, attribute in ipairs({"Ragdolled", "IsRagdolled", "Ragdoll"}) do
+        if character:GetAttribute(attribute) == true then
+            return true
+        end
+    end
+
+    -- Check common ragdoll BoolValues
+    for _, name in ipairs({"Ragdolled", "IsRagdolled", "Ragdoll"}) do
+        local value = character:FindFirstChild(name, true)
+
+        if value and value:IsA("BoolValue") and value.Value then
+            return true
+        end
+    end
+
+    -- Many ragdoll systems disable Motor6D joints
+    for _, object in ipairs(character:GetDescendants()) do
+        if object:IsA("Motor6D") and not object.Enabled then
+            return true
+        end
+    end
+
+    return false
+end
+
+task.spawn(function()
+    while true do
+        if _G.SlapAura then
+            local now = tick()
+
+            if now - lastSlap >= 0.25 then
+                local hrp = Char and Char:FindFirstChild("HumanoidRootPart")
+                local tool = Char and Char:FindFirstChildWhichIsA("Tool")
+
+                if hrp and tool then
+                    local closestTarget = nil
+                    local closestDistance = 20
+
+                    for _, player in ipairs(Players:GetPlayers()) do
+                        if player ~= lp then
+                            local character = player.Character
+                            local targetHrp = character
+                                and character:FindFirstChild("HumanoidRootPart")
+                            local humanoid = character
+                                and character:FindFirstChildOfClass("Humanoid")
+
+                            if targetHrp
+                                and humanoid
+                                and humanoid.Health > 0
+                                and not IsRagdolled(character)
+                            then
+                                local distance =
+                                    (hrp.Position - targetHrp.Position).Magnitude
+
+                                if distance <= closestDistance then
+                                    closestDistance = distance
+                                    closestTarget = targetHrp
+                                end
+                            end
+                        end
+                    end
+
+                    -- Only start cooldown when a valid target is found
+                    if closestTarget then
+                        lastSlap = tick()
+
+                        pcall(function()
+                            ReplicatedStorage.Remotes.Slap:FireServer(closestTarget)
+                        end)
+                    end
+                end
+            end
+        end
+
+        task.wait(0.05)
+    end
+end)
+
+
+task.spawn(function()
+	while true do
+		if SpeedBoostEnabled then
+			local hum=Char:FindFirstChild("Humanoid")
+			local hrp=Char:FindFirstChild("HumanoidRootPart")
+			if hum and hrp then
+				local dir=hum.MoveDirection
+				if dir.Magnitude>0 then
+					hrp.CFrame=hrp.CFrame+(dir*0.5)
+				end
+			end
+		end
+		task.wait(0.07)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if AutoBombBusEnabled then
+			local head=Char:FindFirstChild("Head")
+			if head and head.Transparency==1 then
+				task.wait(10.3)
+				local bomb=Char:FindFirstChild("Bomb") or lp.Backpack:FindFirstChild("Bomb")
+				if bomb then
+					bomb.Parent=Char
+					pcall(function()
+						bomb:Activate()
+					end)
+				end
+			end
+		end
+		task.wait(0.05)
+	end
+end)
+
+task.spawn(function()
+	while true do
+
+		if _G.AntiAcid then
+			local whitelist = {
+				["Colliders"] = true,
+				["Effects"] = true,
+				["IgnoreList"] = true,
+				["InteractableEvents"] = true,
+				["Items"] = true,
+				["Map"] = true,
+				["MapBounds"] = true,
+				["Rubbled Remains"] = true,
+				["Shipments"] = true,
+				["Lobby"] = true,
+                ["Halloween"] = true,
+				["SoundRegions"] = true
+			}
+
+			for _,obj in ipairs(workspace:GetChildren()) do
+				if obj:IsA("Folder") and not whitelist[obj.Name] then
+					for _,child in ipairs(obj:GetChildren()) do
+						child:Destroy()
+					end
+					obj:Destroy()
+				end
+			end
+		end
+
+		if _G.AntiLava then
+			for _,obj in ipairs(workspace:GetDescendants()) do
+				if obj:IsA("BasePart") and obj.Name == "Lava" then
+					obj:Destroy()
+				end
+			end
+		end
+
+		if _G.AntiKnockback then
+			local char = Players.LocalPlayer.Character
+			local hum = char and char:FindFirstChild("Humanoid")
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+			if hum and hrp then
+				if hum.PlatformStand == true then
+					if not workspace:FindFirstChild("AntiKB_Cage_"..char.Name) then
+						local cage = Instance.new("Folder")
+						cage.Name = "AntiKB_Cage_"..char.Name
+						cage.Parent = workspace
+
+						local function makePart(name, size, offset)
+							local p = Instance.new("Part")
+							p.Name = name
+							p.Size = size
+							p.Anchored = true
+							p.CanCollide = true
+							p.Transparency = 1
+							p.Position = hrp.Position + offset
+							p.Parent = cage
+						end
+
+						makePart("Top", Vector3.new(6,1,6), Vector3.new(0,3,0))
+						makePart("Bottom", Vector3.new(6,1,6), Vector3.new(0,-3,0))
+						makePart("Front", Vector3.new(6,6,1), Vector3.new(0,0,-3))
+						makePart("Back", Vector3.new(6,6,1), Vector3.new(0,0,3))
+						makePart("Left", Vector3.new(1,6,6), Vector3.new(-3,0,0))
+						makePart("Right", Vector3.new(1,6,6), Vector3.new(3,0,0))
+					else
+						local cage = workspace["AntiKB_Cage_"..char.Name]
+						for _,p in ipairs(cage:GetChildren()) do
+							if p:IsA("Part") then
+								if p.Name == "Top" then p.Position = hrp.Position + Vector3.new(0,5,0) end
+								if p.Name == "Bottom" then p.Position = hrp.Position + Vector3.new(0,-5,0) end
+								if p.Name == "Front" then p.Position = hrp.Position + Vector3.new(0,0,-5) end
+								if p.Name == "Back" then p.Position = hrp.Position + Vector3.new(0,0,5) end
+								if p.Name == "Left" then p.Position = hrp.Position + Vector3.new(-5,0,0) end
+								if p.Name == "Right" then p.Position = hrp.Position + Vector3.new(5,0,0) end
+							end
+						end
+					end
+				else
+					local cage = workspace:FindFirstChild("AntiKB_Cage_"..char.Name)
+					if cage then cage:Destroy() end
+				end
+			end
+		end
+
+		task.wait(0.1)
+	end
+end)
+
+--==================================================
+-- GET ALL ITEMS
+--==================================================
+
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local GetAllItemsEnabled = false
+local GetAllItemsRunning = false
+local GetAllItemsNoclipConnection
+
+--==================================================
+-- NOCLIP
+--==================================================
+
+local function SetGetAllItemsNoclip(enabled)
+
+	if GetAllItemsNoclipConnection then
+		GetAllItemsNoclipConnection:Disconnect()
+		GetAllItemsNoclipConnection = nil
+	end
+
+	if not enabled then
+
+		local currentChar = lp.Character
+
+		if currentChar then
+			for _, obj in ipairs(currentChar:GetDescendants()) do
+				if obj:IsA("BasePart") then
+					obj.CanCollide = true
+				end
+			end
+		end
+
+		return
+	end
+
+	GetAllItemsNoclipConnection =
+		RunService.Stepped:Connect(function()
+
+			if not GetAllItemsEnabled then
+				return
+			end
+
+			local currentChar = lp.Character
+
+			if not currentChar then
+				return
+			end
+
+			for _, obj in ipairs(currentChar:GetDescendants()) do
+				if obj:IsA("BasePart") then
+					obj.CanCollide = false
+				end
+			end
+		end)
+end
+
+--==================================================
+-- FIND CLOSEST TOOL
+-- ALL TOOLS IN workspace.Items
+--==================================================
+
+local function FindClosestGetAllTool()
+
+	local currentChar = lp.Character
+
+	local hrp =
+		currentChar
+		and currentChar:FindFirstChild("HumanoidRootPart")
+
+	if not hrp then
+		return nil
+	end
+
+	local closest = nil
+	local closestDistance = math.huge
+
+	for _, tool in ipairs(Items:GetChildren()) do
+
+		-- Accept EVERY Tool in workspace.Items.
+		if tool:IsA("Tool") then
+
+			local handle =
+				tool:FindFirstChild("Handle")
+
+			if handle
+				and handle:IsA("BasePart")
+				and handle.Parent then
+
+				local distance =
+					(handle.Position - hrp.Position).Magnitude
+
+				if distance < closestDistance then
+
+					closestDistance = distance
+					closest = tool
+
+				end
+			end
+		end
+	end
+
+	return closest
+end
+
+--==================================================
+-- TWEEN TO TOOL
+--==================================================
+
+local function TweenToGetAllTool(tool)
+
+	if not tool or not tool.Parent then
+		return false
+	end
+
+	local currentChar = lp.Character
+
+	local hrp =
+		currentChar
+		and currentChar:FindFirstChild("HumanoidRootPart")
+
+	local handle =
+		tool:FindFirstChild("Handle")
+
+	if not hrp or not handle then
+		return false
+	end
+
+	local targetPosition =
+		handle.Position + Vector3.new(2, 0, 0)
+
+	local targetCFrame =
+		CFrame.new(
+			targetPosition,
+			handle.Position
+		)
+
+	local tweenInfo =
+		TweenInfo.new(
+			0.1,
+			Enum.EasingStyle.Linear,
+			Enum.EasingDirection.Out
+		)
+
+	local tween =
+		TweenService:Create(
+			hrp,
+			tweenInfo,
+			{
+				CFrame = targetCFrame
+			}
+		)
+
+	local finished = false
+
+	local connection =
+		tween.Completed:Connect(function()
+			finished = true
+		end)
+
+	tween:Play()
+
+	while not finished do
+
+		if not GetAllItemsEnabled then
+
+			tween:Cancel()
+
+			if connection then
+				connection:Disconnect()
+			end
+
+			return false
+		end
+
+		if not tool.Parent then
+
+			tween:Cancel()
+
+			if connection then
+				connection:Disconnect()
+			end
+
+			return false
+		end
+
+		task.wait()
+	end
+
+	if connection then
+		connection:Disconnect()
+	end
+
+	return true
+end
+
+--==================================================
+-- PICK UP TOOL
+--==================================================
+
+local function GetAllPickup(tool)
+
+	if not GetAllItemsEnabled then
+		return false
+	end
+
+	if not tool or not tool.Parent then
+		return false
+	end
+
+	local handle =
+		tool:FindFirstChild("Handle")
+
+	if not handle then
+		return false
+	end
+
+	local id =
+		handle:GetAttribute("ItemId")
+
+	if not id then
+		return false
+	end
+
+	ItemRemote:FireServer(id)
+
+	local gui =
+		handle:FindFirstChild("ItemGui")
+
+	if gui then
+		gui.Enabled = false
+	end
+
+	return true
+end
+
+--==================================================
+-- GET ALL ITEMS LOOP
+--==================================================
+
+local function StartGetAllItems()
+
+	if GetAllItemsRunning then
+		return
+	end
+
+	GetAllItemsRunning = true
+
+	while GetAllItemsEnabled do
+
+		-- Use the same countdown requirement.
+		if CountdownAllowed() then
+
+			-- Always get the closest remaining Tool.
+			local tool =
+				FindClosestGetAllTool()
+
+			if tool then
+
+				-- Tween to tool for 0.2 seconds.
+				local arrived =
+					TweenToGetAllTool(tool)
+
+				if arrived
+					and GetAllItemsEnabled
+					and tool.Parent then
+
+					-- Wait 0.4 seconds after arriving.
+					task.wait(0.2)
+
+					if GetAllItemsEnabled
+						and tool.Parent then
+
+						-- Pick it up.
+						GetAllPickup(tool)
+
+						-- Wait 2 seconds before
+						-- going to the next tool.
+						task.wait(2)
+					end
+
+				else
+					task.wait(0.1)
+				end
+
+			else
+
+				-- No tools currently available.
+				task.wait(0.1)
+
+			end
+
+		else
+
+			-- Wait for the countdown.
+			task.wait(0.1)
+
+		end
+	end
+
+	GetAllItemsRunning = false
+end
+
+--==================================================
+-- TOGGLE
+--==================================================
+
+CreateSavedToggle(ItemsTab, {
+	Name = "Get all items (Use anti acid with this can clip into ground)",
+	CurrentValue = false,
+
+	Callback = function(v)
+		GetAllItemsEnabled = v
+
+		if v then
+			-- Disable Get Items
+			GetItemsEnabled = false
+			CollectionRunning = false
+			CollectionCooldown = false
+			lastPicked = nil
+
+			-- Enable Get All Items
+			SetGetAllItemsNoclip(true)
+
+			if not GetAllItemsRunning then
+				task.spawn(StartGetAllItems)
+			end
+		else
+			SetGetAllItemsNoclip(false)
+		end
+	end
+})
+
+--==================================================
+-- CHARACTER RESPAWN
+--==================================================
+
+lp.CharacterAdded:Connect(function()
+
+	task.wait(0.2)
+
+	if GetAllItemsEnabled then
+		SetGetAllItemsNoclip(true)
+	end
+end)
