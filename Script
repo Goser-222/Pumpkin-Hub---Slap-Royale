@@ -354,8 +354,8 @@ local GoodPeopleTab = Window:CreateTab("Good People", "heart")
 GoodPeopleTab:CreateSection("Title")
 
 GoodPeopleTab:CreateParagraph({
-    Title = "SVCLUTCHER",
-    Content = "Thank you for being the first to make a video on Pumpkin Hub! Sub to SVCLUTCHER on YT"
+    Title = "How to get here",
+    Content = "Do something good for Pumpkin Hub like a showcase and if the owner sees it he might put you here! Tho you can get removed from this tab too for doing bad stuff like STEALING FEATURES MAKING THEM YOUR OWN"
 })
 
 CombatTab:CreateSlider({
